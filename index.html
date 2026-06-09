@@ -2369,7 +2369,13 @@ body.dark-mode .btn-reset { background:#334155 !important; color:#e2e8f0 !import
 /* ── Backend API / PostgreSQL DB-first mode ── */
 const API_PROTOCOL = location.protocol === 'file:' ? 'http:' : location.protocol;
 const API_HOST = location.hostname || 'localhost';
-const API_URL = `${API_PROTOCOL}//${API_HOST}:5001/api`;
+
+// Local: http://localhost:5001/api
+// Render/Production: https://your-domain.onrender.com/api
+const API_URL =
+  API_HOST === 'localhost' || API_HOST === '127.0.0.1'
+    ? `${API_PROTOCOL}//${API_HOST}:5001/api`
+    : `${API_PROTOCOL}//${API_HOST}/api`;
 let backendToken = localStorage.getItem('bq_backend_token') || '';
 let dbSyncTimer = null;
 let dbSyncBusy = false;
@@ -4855,7 +4861,7 @@ window.confirmPurchasePayment = async function(id){
   showMessage('✅ تم تأكيد الدفع النقدي للمشتريات');
 };
 
-window.editPurchase = async function(id){
+window.editPurchase = function(id){
   const pi=purchasesData.findIndex(p=>String(p.id)===String(id));
   if(pi<0) return;
   const pur=purchasesData[pi];
