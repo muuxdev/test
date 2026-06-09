@@ -3717,29 +3717,73 @@ app.post('/api/installments', authenticate, async (req, res) => {
     const { customer_name, amount, paid, remaining, due_date, status, notes } = req.body;
     const amountNum = Number(amount || 0);
     const paidNum = Number(paid || 0);
-    const result = await q(
-      `INSERT INTO installments (legacy_id, customer_name, amount, paid, remaining, due_date, status, notes, created_at, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6::date, $7, $8, NOW(), $9) RETURNING *`,
-      [req.body.legacy_id || req.body.id || null, customer_name || '', amountNum, paidNum, Number(remaining ?? (amountNum - paidNum)), due_date || null, status || 'pending', notes || '', req.user.email]
-    );
-    res.json(rowInstallment(result.rows[0]));
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
 
+    const result = await q(
+      `INSERT INTO installments (
+        legacy_id, customer_name, amount, paid, remaining,
+        due_date, status, notes, data, created_at, created_by
+      )
+      VALUES ($1, $2, $3, $4, $5, $6::date, $7, $8, $9::jsonb, NOW(), $10)
+      RETURNING *`,
+      [
+        req.body.legacy_id || req.body.id || null,
+        customer_name || '',
+        amountNum,
+        paidNum,
+        Number(remaining ?? (amountNum - paidNum)),
+        due_date || null,
+        status || 'pending',
+        notes || '',
+        JSON.stringify(req.body),
+        req.user.email
+      ]
+    );
+
+    res.json(rowInstallment(result.rows[0]));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 app.put('/api/installments/:id', authenticate, async (req, res) => {
   try {
     const { customer_name, amount, paid, remaining, due_date, status, notes } = req.body;
     const amountNum = Number(amount || 0);
     const paidNum = Number(paid || 0);
+
     const result = await q(
-      `UPDATE installments SET customer_name = $1, amount = $2, paid = $3, remaining = $4, due_date = $5::date, status = $6, notes = $7, updated_at = NOW(), updated_by = $8 WHERE id = $9 RETURNING *`,
-      [customer_name || '', amountNum, paidNum, Number(remaining ?? (amountNum - paidNum)), due_date || null, status || 'pending', notes || '', req.user.email, req.params.id]
+      `UPDATE installments SET
+        customer_name = $1,
+        amount = $2,
+        paid = $3,
+        remaining = $4,
+        due_date = $5::date,
+        status = $6,
+        notes = $7,
+        data = COALESCE(data, '{}'::jsonb) || $8::jsonb,
+        updated_at = NOW(),
+        updated_by = $9
+      WHERE id = $10
+      RETURNING *`,
+      [
+        customer_name || '',
+        amountNum,
+        paidNum,
+        Number(remaining ?? (amountNum - paidNum)),
+        due_date || null,
+        status || 'pending',
+        notes || '',
+        JSON.stringify(req.body),
+        req.user.email,
+        req.params.id
+      ]
     );
+
     if (!result.rowCount) return res.status(404).json({ error: 'Installment not found' });
     res.json(rowInstallment(result.rows[0]));
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
-
 app.delete('/api/installments/:id', authenticate, async (req, res) => {
   try {
     const result = await q('DELETE FROM installments WHERE id = $1', [req.params.id]);
