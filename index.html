@@ -2370,12 +2370,13 @@ body.dark-mode .btn-reset { background:#334155 !important; color:#e2e8f0 !import
 const API_PROTOCOL = location.protocol === 'file:' ? 'http:' : location.protocol;
 const API_HOST = location.hostname || 'localhost';
 
-// Local: http://localhost:5001/api
-// Render/Production: https://your-domain.onrender.com/api
+// Localhost uses port 5001. Render/production uses the same domain with /api.
 const API_URL =
   API_HOST === 'localhost' || API_HOST === '127.0.0.1'
     ? `${API_PROTOCOL}//${API_HOST}:5001/api`
     : `${API_PROTOCOL}//${API_HOST}/api`;
+
+window.API_BASE = API_URL;
 let backendToken = localStorage.getItem('bq_backend_token') || '';
 let dbSyncTimer = null;
 let dbSyncBusy = false;
@@ -4861,7 +4862,7 @@ window.confirmPurchasePayment = async function(id){
   showMessage('✅ تم تأكيد الدفع النقدي للمشتريات');
 };
 
-window.editPurchase = function(id){
+window.editPurchase = async function(id){
   const pi=purchasesData.findIndex(p=>String(p.id)===String(id));
   if(pi<0) return;
   const pur=purchasesData[pi];
@@ -5997,7 +5998,7 @@ window.svPayInst=async function(id){
 <!-- BQ Activity Tracker V9: paste before </body> in frontend-updated.html -->
 <script>
 (function(){
-  const API_BASE = window.API_BASE || 'http://localhost:5001/api';
+  const API_BASE = window.API_BASE || (location.hostname === 'localhost' || location.hostname === '127.0.0.1' ? location.protocol + '//' + location.hostname + ':5001/api' : location.origin + '/api');
   function getBQToken(){ return localStorage.getItem('bq_backend_token') || localStorage.getItem('token') || localStorage.getItem('authToken') || localStorage.getItem('bq_token') || ''; }
   function currentUserEmail(){
     try {
