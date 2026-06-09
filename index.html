@@ -2863,77 +2863,7 @@ function makeSellerInvoiceNo() {
   return 'INV-' + Date.now().toString().slice(-8);
 }
 
-function normalizeInstallmentForBackend(row) {
-  return {
-    ...row,
-    legacy_id: row.id || row.legacy_id || null,
-    sale_id: row.sale_id || '',
-    invoice_no: row.invoice_no || '',
-    customer_id: row.customer_id || '',
-    seller_name: row.seller_name || currentUser?.name || '',
-    seller_email: row.seller_email || currentUser?.email || '',
-    amount: Number(row.amount_due || row.amount || row.invoice_remaining || 0),
-    paid: Number(row.amount_paid || row.paid || 0),
-    remaining: Math.max(
-      0,
-      Number(row.amount_due || row.amount || row.invoice_remaining || 0) -
-      Number(row.amount_paid || row.paid || 0)
-    ),
-    status: (Number(row.amount_paid || row.paid || 0) >= Number(row.amount_due || row.amount || 0)) ? 'paid' : 'pending',
-    notes: row.notes || ('فاتورة: ' + (row.invoice_no || ''))
-  };
-}
-async function saveSellerInstallmentsToBackend(rows) {
-  const saved = [];
-  for (const row of rows || []) {
-    try {
-      const created = await backendRequest('/installments', {
-        method: 'POST',
-        body: JSON.stringify(normalizeInstallmentForBackend(row))
-      });
-      saved.push({ ...row, ...created });
-    } catch (e) {
-      console.warn('⚠️ Failed to save installment to backend:', e);
-      throw e;
-    }
-  }
-  return saved;
-}
-
-async function saveSellerSaleToBackend(sale, installmentRows = []) {
-  if (!backendToken) {
-    throw new Error('لا يوجد اتصال آمن بالسيرفر. سجل الدخول مرة أخرى.');
-  }
-
-  const savedSale = await backendRequest('/sales', {
-    method: 'POST',
-    body: JSON.stringify(sale)
-  });
-
-  const finalSale = {
-    ...sale,
-    ...savedSale,
-    items: sale.items,
-    seller_name: sale.seller_name || currentUser?.name,
-    seller_email: sale.seller_email || currentUser?.email,
-    createdBy: sale.createdBy || currentUser?.email
-  };
-
-  salesData = mergeRecordsById(salesData, [finalSale]);
-  setLocalState('bq_sales', salesData);
-
-  if (installmentRows.length) {
-    const savedInstallments = await saveSellerInstallmentsToBackend(installmentRows);
-    installmentsData = mergeRecordsById(installmentsData, savedInstallments.length ? savedInstallments : installmentRows);
-    setLocalState('bq_installments', installmentsData);
-  }
-
-  await loadSellerProductsLive();
-  await getSellerSalesLive();
-
-  return finalSale;
-}
-
+/* ⛔ أُزيل التعريف القديم المتعارض — النسخة الموحّدة والمصحّحة موجودة في كتلة "الاتساق المالي النهائي" أسفل الصفحة */
 function getSaleByAnyId(id) {
   const sid = String(id);
   return (window.__lastSellerSales || []).find(x => String(x.id) === sid || String(x._id) === sid || String(x.db_id) === sid || String(x.invoice_no) === sid)
@@ -3306,7 +3236,7 @@ window.refreshDashboard = function(){
   const totalCOGS  = purFiltered.reduce((s,v)=>s+(v.subtotal||0),0);       // تكلفة البضاعة
   const totalExp   = expFiltered.reduce((s,v)=>s+(v.amount||0),0);
   const totalDebt  = customersData.reduce((s,v)=>s+(v.balance_due||0),0);
-  const todaySales = salesData.filter(s=>s.date===today()).length;
+  const todaySales = salesData.filter(s=>String(s.date||'').slice(0,10)===today()).length;
   document.getElementById('dashSales').textContent=fmt(totalSales);
   document.getElementById('dashExpenses').textContent=fmt(totalExp);
   document.getElementById('dashProfit').textContent=fmt(netSales-totalCOGS-totalExp);
@@ -3326,9 +3256,13 @@ function buildCharts(year){
   salesChart=new Chart(ctx1,{type:'bar',data:{labels:months,datasets:[{label:'المبيعات',data:salesByMonth,backgroundColor:'rgba(21,101,192,.7)',borderColor:'#1565c0',borderWidth:1,borderRadius:6}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{callback:v=>' د.إ '+v.toLocaleString('ar-AE')}}}}});
   const totalSales=salesData.reduce((s,v)=>s+(v.total||0),0);
   const totalExp  =expensesData.reduce((s,v)=>s+(v.amount||0),0);
+  // نفس معادلة بطاقة "صافي الربح": صافي المبيعات (قبل الضريبة وبعد الخصم) - تكلفة البضاعة - المصروفات
+  const donutNetSales = salesData.reduce((s,v)=>s+((v.subtotal||0)-(v.discount||0)),0);
+  const donutCOGS = purchasesData.reduce((s,v)=>s+(v.subtotal||0),0);
+  const donutNetProfit = Math.max(0, donutNetSales - donutCOGS - totalExp);
   const ctx2=document.getElementById('donutChart').getContext('2d');
   if(donutChart) donutChart.destroy();
-  donutChart=new Chart(ctx2,{type:'doughnut',data:{labels:['المبيعات','المصروفات','صافي الربح'],datasets:[{data:[totalSales,totalExp,Math.max(0,totalSales-totalExp)],backgroundColor:['#10b981','#ef4444','#1565c0'],borderWidth:0}]},options:{responsive:true,plugins:{legend:{position:'bottom'}}}});
+  donutChart=new Chart(ctx2,{type:'doughnut',data:{labels:['المبيعات','المصروفات','صافي الربح'],datasets:[{data:[totalSales,totalExp,donutNetProfit],backgroundColor:['#10b981','#ef4444','#1565c0'],borderWidth:0}]},options:{responsive:true,plugins:{legend:{position:'bottom'}}}});
 }
 
 // ── Products ──
@@ -3463,22 +3397,7 @@ window.invFillPrice = function(){
   else priceEl.value='';
   priceEl.focus();
 };
-window.addInvItem=function(){
-  const pid=document.getElementById('invProductSel').value;
-  if(!pid){ showMessage('⚠️ اختر منتجاً','warning'); return; }
-  const p=productsData.find(x=>x.id===pid); if(!p) return;
-  const qty=parseInt(document.getElementById('invQty').value)||1;
-  const price=parseFloat(document.getElementById('invItemPrice').value)||0;
-  if(!price){ showMessage('⚠️ أدخل سعر المنتج','warning'); document.getElementById('invItemPrice').focus(); return; }
-  const existing=invItems.find(i=>i.pid===pid);
-  const newQty=(existing?(existing.qty||0):0)+qty;
-  if(!ensureStockAvailable(pid,newQty,invItems,existing?invItems.indexOf(existing):-1)) return;
-  if(existing){ existing.qty=newQty; existing.total=existing.qty*existing.price; }
-  else invItems.push({pid,code:p.code,name:p.name,price,qty,total:qty*price});
-  document.getElementById('invItemPrice').value='';
-  document.getElementById('invQty').value='1';
-  renderInvItems(); updateInvTotals();
-};
+/* ⛔ أُزيل التعريف القديم المتعارض — النسخة الموحّدة والمصحّحة موجودة في كتلة "الاتساق المالي النهائي" أسفل الصفحة */
 function renderInvItems(){
   const tb=document.getElementById('invItemsBody');
   if(!invItems.length){ tb.innerHTML='<tr><td colspan="6" style="text-align:center;padding:20px;color:#94a3b8">لم تتم إضافة منتجات</td></tr>'; return; }
@@ -3490,76 +3409,9 @@ function renderInvItems(){
     <td><button class="action-btn btn-delete" onclick="removeInvItem(${i})">✕</button></td>
   </tr>`).join('');
 }
-window.changeInvQty=function(i,v){ const qty=parseInt(v)||1; if(!ensureStockAvailable(invItems[i].pid,qty,invItems,i)){ renderInvItems(); return; } invItems[i].qty=qty; invItems[i].total=invItems[i].qty*invItems[i].price; renderInvItems(); updateInvTotals(); };
+/* ⛔ أُزيل التعريف القديم المتعارض — النسخة الموحّدة والمصحّحة موجودة في كتلة "الاتساق المالي النهائي" أسفل الصفحة */
 window.removeInvItem=function(i){ invItems.splice(i,1); renderInvItems(); updateInvTotals(); };
-window.updateInvTotals=function(){
-  const sub=invItems.reduce((s,v)=>s+v.total,0);
-  const taxOn=document.getElementById('taxToggle')&&document.getElementById('taxToggle').checked;
-  const tax=taxOn?sub*0.05:0;
-  const disc=parseFloat(document.getElementById('invDiscount').value)||0;
-  const total=sub+tax-disc;
-  const paid=parseFloat(document.getElementById('invPaid').value)||0;
-  const rem=total-paid;
-  document.getElementById('invSubtotal').textContent=fmt(sub);
-  document.getElementById('invTax').textContent=fmt(tax);
-  document.getElementById('invTotal').textContent=fmt(total);
-  document.getElementById('invRemaining').textContent=fmt(rem);
-  const taxRow=document.getElementById('taxRow');
-  const taxStatus=document.getElementById('taxStatus');
-  if(taxRow) taxRow.style.display=taxOn?'flex':'none';
-  if(taxStatus) taxStatus.textContent=taxOn?'مفعّل ✓':'غير مفعّل';
-  const invSubRow2=document.getElementById('invSubtotalRow');
-  if(invSubRow2) invSubRow2.style.display=taxOn?'flex':'none';
-  const svSubRow=document.getElementById('svSubtotalRow');
-  if(svSubRow) svSubRow.style.display=taxOn?'flex':'none';
-  const invSubRow=document.getElementById('invSubtotalRow');
-  if(invSubRow) invSubRow.style.display=taxOn?'flex':'none';
-};
-window.saveSale=async function(){
-  if(!invItems.length){ showMessage('⚠️ أضف منتجاً على الأقل','warning'); return; }
-  if(!ensureAllStockAvailable(invItems)) return;
-  const sub=invItems.reduce((s,v)=>s+v.total,0);
-  const taxOn=document.getElementById('taxToggle')&&document.getElementById('taxToggle').checked;
-  const tax=taxOn?sub*0.05:0;
-  const disc=parseFloat(document.getElementById('invDiscount').value)||0;
-  const total=sub+tax-disc;
-  const paid=parseFloat(document.getElementById('invPaid').value)||0;
-  const rem=total-paid;
-  const custId=document.getElementById('invCustomer').value;
-  const custName=custId==='cash'||!custId?'عميل نقدي':customersData.find(c=>c.id===custId)?.name||'عميل';
-  const invNo=makeSellerInvoiceNo();
-  const sale={id:Date.now()+'',invoice_no:invNo,date:document.getElementById('invDate').value,customer_id:custId,customer_name:custName,user_name:currentUser.name,seller_name:currentUser.name,seller_email:currentUser.email,createdBy:currentUser.email,items:[...invItems],subtotal:sub,tax_amount:tax,discount:disc,total,paid,remaining:rem,payment_type:document.getElementById('invPayType').value,notes:document.getElementById('invNotes').value,inv_type:tax>0?'tax':'normal'};
-  invCounter++; await saveStateValue('bq_inv_counter', invCounter);
-  salesData.push(sale); await save('bq_sales',salesData);
-  // Update customer balance
-  if(custId!=='cash'&&custId){
-    const ci=customersData.findIndex(c=>c.id===custId);
-    if(ci>=0){ customersData[ci].balance_due+=rem; customersData[ci].total_purchases+=total; await save('bq_customers',customersData); }
-  }
-  // Update stock
-  invItems.forEach(item=>{ const pi=productsData.findIndex(p=>p.id===item.pid); if(pi>=0){ productsData[pi].stock_qty=Math.max(0,(productsData[pi].stock_qty||0)-item.qty); } });
-  await save('bq_products',productsData);
-  // أي فاتورة مبيعات بها مبلغ متبقٍ تظهر في صفحة الأقساط والآجل حتى يتم السداد
-  if(rem>0){
-    if(sale.payment_type==='installment'){
-      const count=parseInt(document.getElementById('invInstCount').value)||3;
-      const instAmt=rem/count;
-      for(let i=1;i<=count;i++){
-        const dd=new Date(sale.date); dd.setMonth(dd.getMonth()+i);
-        installmentsData.push({id:Date.now()+'-'+i,sale_id:sale.id,invoice_no:invNo,customer_id:custId,customer_name:custName,seller_name:currentUser.name,seller_email:currentUser.email,createdBy:currentUser.email,invoice_total:total,invoice_paid:paid,invoice_remaining:rem,amount_due:instAmt,amount_paid:0,due_date:dd.toISOString().split('T')[0],paid:false});
-      }
-    } else {
-      const dd=new Date(sale.date); dd.setMonth(dd.getMonth()+1);
-      installmentsData.push({id:Date.now()+'',sale_id:sale.id,invoice_no:invNo,customer_id:custId,customer_name:custName,seller_name:currentUser.name,seller_email:currentUser.email,createdBy:currentUser.email,invoice_total:total,invoice_paid:paid,invoice_remaining:rem,amount_due:rem,amount_paid:0,due_date:dd.toISOString().split('T')[0],paid:false});
-    }
-    await save('bq_installments',installmentsData);
-  }
-  showInvoicePreview(sale);
-  clearInvoice();
-  refreshDashboard();
-  showMessage('✅ تم حفظ الفاتورة '+invNo+' بنجاح');
-  return true;
-};
+/* ⛔ أُزيل التعريف القديم المتعارض — النسخة الموحّدة والمصحّحة موجودة في كتلة "الاتساق المالي النهائي" أسفل الصفحة */
 function showInvoicePreview(sale){
   const previewSubRow=document.getElementById('previewSubRow');
   if(previewSubRow) previewSubRow.style.display=(sale.inv_type==='tax'||sale.tax_amount>0)?'flex':'none';
@@ -3621,34 +3473,7 @@ window.filterSales=function(){
   });
   renderSalesTable(filtered);
 };
-window.deleteSale=async function(id){
-  if(!confirm('حذف الفاتورة؟ سيُعاد المخزون ويُعدّل رصيد العميل والأقساط المرتبطة.')) return;
-  const sale=salesData.find(s=>s.id===id);
-  if(sale){
-    // إعادة المخزون المباع
-    (sale.items||[]).forEach(item=>{ const pi=productsData.findIndex(p=>p.id===item.pid); if(pi>=0){ productsData[pi].stock_qty+=(item.qty||0); } });
-    await save('bq_products',productsData);
-    // عكس رصيد العميل: نخصم المتبقي الفعلي للفاتورة (مجموع أقساطها غير المدفوعة أو المتبقي)
-    if(sale.customer_id && sale.customer_id!=='cash'){
-      const ci=customersData.findIndex(c=>c.id===sale.customer_id);
-      if(ci>=0){
-        const linkedInst=(installmentsData||[]).filter(x=>x.sale_id===id);
-        const outstanding=linkedInst.length
-          ? linkedInst.reduce((s,x)=>s+((x.amount_due||0)-(x.amount_paid||0)),0)
-          : (sale.remaining||0);
-        customersData[ci].balance_due=Math.max(0,(customersData[ci].balance_due||0)-outstanding);
-        customersData[ci].total_purchases=Math.max(0,(customersData[ci].total_purchases||0)-(sale.total||0));
-        await save('bq_customers',customersData);
-      }
-    }
-    // حذف الأقساط المرتبطة بالفاتورة
-    if(Array.isArray(installmentsData) && installmentsData.some(x=>x.sale_id===id)){
-      installmentsData=installmentsData.filter(x=>x.sale_id!==id); await save('bq_installments',installmentsData);
-    }
-  }
-  salesData=salesData.filter(s=>s.id!==id); save('bq_sales',salesData);
-  loadSalesTable(); refreshDashboard(); showMessage('✅ تم الحذف وإرجاع المخزون وتعديل الرصيد');
-};
+/* ⛔ أُزيل التعريف القديم المتعارض — النسخة الموحّدة والمصحّحة موجودة في كتلة "الاتساق المالي النهائي" أسفل الصفحة */
 window.printSaleInv=function(id){ const s=salesData.find(x=>x.id===id); if(s){ showInvoicePreview(s); showPage('invoice',null); } };
 
 // ── All Invoices (Accountant) ──
@@ -3705,14 +3530,7 @@ function loadAllInvoices(){
 }
 
 // ── Accountant Invoice Edit/Delete ──
-window.accountantDeleteInv = function(id){
-  if(!confirm('هل أنت متأكد من حذف هذه الفاتورة؟')) return;
-  salesData = salesData.filter(s=>s.id!==id);
-  save('bq_sales', salesData);
-  loadAllInvoices();
-  showMessage('✅ تم حذف الفاتورة');
-};
-
+/* ⛔ أُزيل التعريف القديم المتعارض — النسخة الموحّدة والمصحّحة موجودة في كتلة "الاتساق المالي النهائي" أسفل الصفحة */
 window.accountantEditInv = function(id){
   const s = salesData.find(x=>x.id===id);
   if(!s) return;
@@ -3726,28 +3544,7 @@ window.accountantEditInv = function(id){
   document.getElementById('accEditModal').style.display='block';
 };
 
-window.saveAccEditInv = function(){
-  const id = document.getElementById('accEditInvId').value;
-  const idx = salesData.findIndex(s=>s.id===id);
-  if(idx<0) return;
-  const paid = parseFloat(document.getElementById('accEditPaid').value)||0;
-  const disc = parseFloat(document.getElementById('accEditDiscount').value)||0;
-  const customer = document.getElementById('accEditCustomer').value.trim();
-  const payType = document.getElementById('accEditPayType').value;
-  const notes = document.getElementById('accEditNotes').value;
-  // تحديث البيانات
-  salesData[idx].paid = paid;
-  salesData[idx].discount = disc;
-  salesData[idx].customer_name = customer;
-  salesData[idx].payment_type = payType;
-  salesData[idx].notes = notes;
-  salesData[idx].remaining = salesData[idx].total - paid;
-  save('bq_sales', salesData);
-  document.getElementById('accEditModal').style.display='none';
-  loadAllInvoices();
-  showMessage('✅ تم تعديل الفاتورة بنجاح');
-};
-
+/* ⛔ أُزيل التعريف القديم المتعارض — النسخة الموحّدة والمصحّحة موجودة في كتلة "الاتساق المالي النهائي" أسفل الصفحة */
 // ── Suppliers ──
 function calcSupplierPurchaseTotal(supplier){
   if(!supplier) return 0;
@@ -3808,116 +3605,9 @@ function loadSuppliersDropdown(){
 }
 
 // ── Purchases ──
-window.addPurItem=function(){
-  const pid=document.getElementById('purProductSel').value;
-  if(!pid){ showMessage('⚠️ اختر منتجاً','warning'); return; }
-  const p=productsData.find(x=>x.id===pid);
-  const qty=parseInt(document.getElementById('purQtyIn').value)||1;
-  const cost=parseFloat(document.getElementById('purCost').value)||p?.buy_price||0;
-  purItems.push({pid,name:p?.name||'منتج',qty,cost,total:qty*cost});
-  renderPurItems();
-};
-function renderPurItems(){
-  const tb=document.getElementById('purItemsBody');
-  if(!purItems.length){ tb.innerHTML='<tr><td colspan="5" style="text-align:center;padding:20px;color:#94a3b8">لم تتم إضافة أصناف</td></tr>'; document.getElementById('purTotal').textContent='0.00 ج'; return; }
-  tb.innerHTML=purItems.map((item,i)=>`<tr><td>${item.name}</td><td>${item.qty}</td><td>${fmt(item.cost)}</td><td>${fmt(item.total)}</td><td><button class="action-btn btn-delete" onclick="removePurItem(${i})">✕</button></td></tr>`).join('');
-  const purSub = purItems.reduce((s,v)=>s+v.total,0);
-  const purTaxOn = document.getElementById('purTypeTax')?.checked;
-  const purTax = purTaxOn ? purSub*0.05 : 0;
-  document.getElementById('purSubtotal').textContent = fmt(purSub);
-  document.getElementById('purTaxAmt').textContent   = fmt(purTax);
-  document.getElementById('purTotal').textContent    = fmt(purSub+purTax);
-}
+/* ⛔ أُزيل التعريف القديم المتعارض — النسخة الموحّدة والمصحّحة موجودة في كتلة "الاتساق المالي النهائي" أسفل الصفحة */
 window.removePurItem=function(i){ purItems.splice(i,1); renderPurItems(); };
-window.savePurchase=async function(){
-  if(!purItems.length){ showMessage('⚠️ أضف صنفاً','warning'); return; }
-  const supId=document.getElementById('purSupplier').value;
-  const supName=supId?suppliersData.find(s=>s.id===supId)?.name||'مورد':'مورد';
-  // معالجة المرفق
-  const attachFile = document.getElementById('purAttachment').files[0];
-  const savePurchaseWithAttach = async (attachData) => {
-    const purPayType=document.getElementById('purPayType')?.value||'cash';
-    const purDueDate=document.getElementById('purDueDate')?.value||'';
-    const purPaidAmt=parseFloat(document.getElementById('purPaidAmt')?.value)||0;
-    const purTaxOn=document.getElementById('purTypeTax')?.checked;
-    const purId=Date.now()+'';
-
-    const finalizedItems = purItems.map((item,idx)=>{
-      let pid=item.pid;
-      let code=item.code||'';
-      const qty=parseInt(item.qty)||0;
-      const cost=parseFloat(item.cost)||0;
-      if(qty<=0) throw new Error('كمية الصنف يجب أن تكون أكبر من 0');
-      if(item.is_new_product || String(pid).startsWith('new-')){
-        const newProd={
-          id:'m'+Date.now()+idx,
-          code:code || 'MNL-'+Date.now().toString().slice(-4)+idx,
-          name:item.name,
-          category:'أخرى',
-          buy_price:cost,
-          sell_price:cost,
-          stock_qty:qty,
-          notes:'أضيف من المشتريات',
-          created_from_purchase_id:purId,
-          created_at:today()
-        };
-        productsData.push(newProd);
-        pid=newProd.id; code=newProd.code;
-      } else {
-        const pi=productsData.findIndex(p=>String(p.id)===String(pid));
-        if(pi>=0){
-          productsData[pi].stock_qty=Math.max(0,(parseInt(productsData[pi].stock_qty)||0)+qty);
-          productsData[pi].buy_price=cost;
-        }
-      }
-      return {pid,code,name:item.name,qty,cost,total:qty*cost,is_new_product:!!item.is_new_product};
-    });
-
-    const purSub=finalizedItems.reduce((sum,v)=>sum+v.total,0);
-    const purTaxAmt=purTaxOn?purSub*0.05:0;
-    const grandTotal=purSub+purTaxAmt;
-    const paidNow=purPayType==='cash'?0:Math.min(purPaidAmt,grandTotal);
-    const pur={id:purId,date:document.getElementById('purDate').value,supplier_id:supId,supplier_name:supName,invoice_no:document.getElementById('purInvNo').value,sales_ref:document.getElementById('purSalesRef')?.value||'',items:finalizedItems,subtotal:purSub,tax_amount:purTaxAmt,total:grandTotal,has_tax:purTaxOn,inv_type:purTaxOn?'tax':'normal',notes:document.getElementById('purNotes').value,attachment:attachData,pay_type:purPayType,payment_type:purPayType,due_date:purDueDate,paid_amt:paidNow,paid:paidNow,payment_confirmed:purPayType!=='cash'};
-    purchasesData.push(pur); await save('bq_purchases',purchasesData);
-    await save('bq_products',productsData);
-    if(supId){ recalculateSupplierPurchaseTotals(true); }
-    // ترحيل المتبقي لآجل المشتريات
-    const purRemaining = grandTotal - pur.paid_amt;
-    if(purRemaining > 0 && pur.pay_type==='deferred'){
-      purInstData.push({
-        id:Date.now()+'',
-        pur_id:pur.id,
-        invoice_no:pur.invoice_no||'PUR-'+Date.now(),
-        supplier_id:supId,
-        supplier_name:supName,
-        date:pur.date,
-        total:pur.total,
-        paid:pur.paid_amt,
-        remaining:purRemaining,
-        due_date:pur.due_date||'',
-        closed:false,
-        payments:[]
-      });
-      await saveStateValue('bq_pur_inst', purInstData);
-      showMessage('✅ تم حفظ المشتريات وترحيل المتبقي ('+fmt(purRemaining)+') لآجل المشتريات'+(attachData?' مع الفاتورة المرفقة':''));
-    } else if(pur.pay_type==='cash') {
-      showMessage('✅ تم حفظ المشتريات. أكّد الدفع من سجل المشتريات لتسجيل السداد النقدي');
-    } else {
-      showMessage('✅ تم حفظ المشتريات وتحديث المخزون'+(attachData?' مع الفاتورة المرفقة':''));
-    }
-    purItems=[]; renderPurItems(); clearPurchaseForm();
-    loadPurchasesTable(); loadProductsDropdown(); if(typeof loadSuppliersTable==='function') loadSuppliersTable();
-  };
-  try{
-    if(attachFile){
-      const reader=new FileReader();
-      reader.onload=async e=>{ try{ await savePurchaseWithAttach({name:attachFile.name,type:attachFile.type,data:e.target.result}); }catch(err){ showMessage('❌ '+err.message,'error'); } };
-      reader.readAsDataURL(attachFile);
-      return;
-    }
-    await savePurchaseWithAttach(null);
-  } catch(err){ showMessage('❌ '+err.message,'error'); }
-};
+/* ⛔ أُزيل التعريف القديم المتعارض — النسخة الموحّدة والمصحّحة موجودة في كتلة "الاتساق المالي النهائي" أسفل الصفحة */
 window.clearPurchaseForm=function(){ ['purInvNo','purNotes'].forEach(id=>document.getElementById(id).value=''); const sf=document.getElementById('purSalesRef'); if(sf) sf.value=''; const af=document.getElementById('purAttachment'); if(af) af.value=''; const pt=document.getElementById('purPayType'); if(pt) pt.value='cash'; const dd=document.getElementById('purDueDate'); if(dd) dd.value=''; const pa=document.getElementById('purPaidAmt'); if(pa) pa.value='0'; document.getElementById('purDeferredGroup').style.display='none'; document.getElementById('purPaidGroup').style.display='none'; const tt=document.getElementById('purTypeTax'); if(tt) tt.checked=true; purToggleTax(); document.getElementById('purDate').value=today(); purItems=[]; renderPurItems(); };
 function loadPurchasesTable(){
   const tb=document.getElementById('purchasesTableBody');
@@ -3950,6 +3640,25 @@ function loadPurchasesTable(){
 window.deletePurchase=async function(id){
   if(!confirm('حذف فاتورة الشراء؟ سيُخصم المخزون المُضاف ويُعدّل رصيد المورد وآجل المشتريات.')) return;
   const pur=purchasesData.find(p=>p.id===id);
+  const purDbId = pur && (pur.db_id || pur._id);
+  if (backendToken && purDbId) {
+    // DELETE /api/purchases/:id يعكس المخزون ويحذف آجل المشتريات داخل معاملة واحدة في قاعدة البيانات
+    try {
+      await backendRequest('/purchases/' + encodeURIComponent(purDbId), { method:'DELETE' });
+      purchasesData = purchasesData.filter(p=>String(p.id)!==String(id));
+      purInstData = (Array.isArray(purInstData)?purInstData:[]).filter(x=>String(x.pur_id||'')!==String(id));
+      setLocalState('bq_purchases', purchasesData);
+      setLocalState('bq_pur_inst', purInstData);
+      if (pur.supplier_id && typeof recalculateSupplierPurchaseTotals === 'function') recalculateSupplierPurchaseTotals(true);
+      if (typeof loadBackendState === 'function') await loadBackendState({ refresh:true, silent:true });
+      loadPurchasesTable(); if(typeof loadPurInstTable==='function') loadPurInstTable(); if(typeof loadSuppliersTable==='function') loadSuppliersTable(); refreshDashboard();
+      showMessage('✅ تم حذف فاتورة الشراء وعكس أثرها على المخزون وآجل المشتريات');
+    } catch(e) {
+      console.error('❌ فشل حذف فاتورة الشراء من قاعدة البيانات:', e);
+      showMessage('❌ فشل حذف الفاتورة من قاعدة البيانات: ' + e.message, 'error');
+    }
+    return;
+  }
   if(pur){
     // خصم المخزون الذي كانت الفاتورة قد أضافته
     (pur.items||[]).forEach(item=>{ const pi=productsData.findIndex(p=>p.id===item.pid); if(pi>=0){ productsData[pi].stock_qty=Math.max(0,(productsData[pi].stock_qty||0)-(item.qty||0)); } });
@@ -4097,7 +3806,12 @@ async function syncSaleFromInstallments(saleId, invoiceNo, payDate=today()){
   salesData[si].paid = Math.max(0,total-remaining);
   salesData[si].closed = remaining<=0;
   if(remaining<=0) salesData[si].closed_date=payDate;
-  save('bq_sales',salesData);
+  if (backendToken) {
+    // PUT /api/sales/:id يتكفّل بتحديث قاعدة البيانات (الفاتورة + رصيد العميل + الأقساط) — نكتفي بتحديث الكاش المحلي
+    setLocalState('bq_sales', salesData);
+  } else {
+    save('bq_sales',salesData);
+  }
   return salesData[si];
 }
 // ✅ يحفظ الدفع في جداول قاعدة البيانات الفعلية (installments + sales)
@@ -4172,38 +3886,7 @@ function updateInstStats(data){
   document.getElementById('instPaid').textContent=fmt(data.reduce((s,v)=>s+(Number(v.amount_paid)||0),0));
   document.getElementById('instCount').textContent=fmtNum(data.length);
 }
-window.payInstallment=async function(id){
-  const i=installmentsData.findIndex(x=>String(x.id)===String(id));
-  if(i<0) return;
-  const inst = installmentsData[i];
-  const due = Number(inst.amount_due)||Number(inst.amount)||0;
-  const currentPaid = Number(inst.amount_paid)||0;
-  const remainingPart = Math.max(0,due-currentPaid);
-  if(remainingPart<=0){ showMessage('ℹ️ هذا القسط مسدد بالفعل','info'); return; }
-  const partialStr = prompt(`المبلغ المستحق لهذا البند: ${fmt(remainingPart)}
-أدخل المبلغ المدفوع:`, remainingPart);
-  if(partialStr===null) return;
-  const paid = Math.min(parseFloat(partialStr)||0, remainingPart);
-  if(paid<=0){ showMessage('⚠️ أدخل مبلغاً صحيحاً','warning'); return; }
-  const payDate = prompt('تاريخ الدفع:', today()) || today();
-  inst.amount_paid = Math.min(currentPaid+paid, due);
-  inst.paid = inst.amount_paid >= due;
-  inst.remaining = Math.max(0, due - inst.amount_paid);
-  inst.status = inst.paid ? 'paid' : 'pending';
-  inst.paid_date = inst.paid ? payDate : (inst.paid_date||null);
-  inst.last_payment = payDate;
-  installmentsData[i]=inst;
-  await save('bq_installments',installmentsData);
-  const ci=customersData.findIndex(c=>String(c.id)===String(inst.customer_id));
-  if(ci>=0){ customersData[ci].balance_due=Math.max(0,(Number(customersData[ci].balance_due)||0)-paid); await save('bq_customers',customersData); }
-  const sale = await syncSaleFromInstallments(inst.sale_id, inst.invoice_no, payDate);
-  // ✅ تثبيت الدفع في جداول قاعدة البيانات الفعلية ليتزامن مع رؤية البائع
-  await persistInstallmentPaymentToBackend(inst, sale);
-  const snap = getInstallmentInvoiceSnapshot(inst);
-  showMessage(snap.remaining<=0 ? '✅ تم سداد الفاتورة بالكامل وإغلاقها 🎉' : '✅ تم تسجيل دفع '+fmt(paid)+' — متبقي على الفاتورة: '+fmt(snap.remaining));
-  loadInstallmentsTable();
-};
-
+/* ⛔ أُزيل التعريف القديم المتعارض — النسخة الموحّدة والمصحّحة موجودة في كتلة "الاتساق المالي النهائي" أسفل الصفحة */
 // ── Reports ──
 window.showReport=function(name){
   document.querySelectorAll('.report-section').forEach(s=>s.style.display='none');
@@ -4214,7 +3897,7 @@ window.showReport=function(name){
 window.genPLReport=function(){
   const from=document.getElementById('plFrom').value;
   const to  =document.getElementById('plTo').value;
-  const filter=s=>(!from||s.date>=from)&&(!to||s.date<=to);
+  const filter=s=>{ const d=String(s.date||'').slice(0,10); return (!from||d>=from)&&(!to||d<=to); };
   const sales     = salesData.filter(filter);
   const expenses  = expensesData.filter(filter);
   const purchases = purchasesData.filter(filter);
@@ -4530,68 +4213,7 @@ window.showPage = window.showPage;
 // ══════════════════════════════════════
 // حفظ الفاتورة المجملة
 // ══════════════════════════════════════
-window.svSaveSummaryInvoice = async function(){
-  const total = parseFloat(document.getElementById('svSumTotal').value)||0;
-  if(!total){ showMessage('⚠️ أدخل إجمالي الفاتورة','warning'); document.getElementById('svSumTotal').focus(); return; }
-  const paid  = parseFloat(document.getElementById('svSumPaid').value)||0;
-  const rem   = total - paid;
-  const custName = document.getElementById('svInvCustomer').value.trim()||'عميل نقدي';
-  const invNo = makeSellerInvoiceNo();
-  const items = svSumItems.length ? svSumItems.map(i=>({pid:'sum',name:i.name,qty:i.qty,price:0,total:0,code:'—'}))
-                                  : [{pid:'sum',name:'بنود متنوعة',qty:1,price:total,total,code:'—'}];
-  const sale = {
-    id:Date.now()+'', invoice_no:invNo,
-    date:document.getElementById('svInvDate').value,
-    customer_name:custName, user_name:currentUser.name,
-    items, subtotal:total, tax_amount:0, discount:0,
-    total, paid, remaining:rem,
-    payment_type:document.getElementById('svInvPayType').value,
-    notes:document.getElementById('svInvNotes').value,
-    inv_type:'summary'
-  };
-  const pendingInstallments = [];
-  // ترحيل للأقساط لو في متبقي
-  if(rem>0){
-    const dueDate=new Date(sale.date); dueDate.setMonth(dueDate.getMonth()+1);
-    pendingInstallments.push({id:Date.now()+'',sale_id:sale.id,invoice_no:invNo,customer_id:'cash',customer_name:custName,seller_name:currentUser.name,seller_email:currentUser.email,createdBy:currentUser.email,invoice_total:total,invoice_paid:paid,invoice_remaining:rem,amount_due:rem,amount_paid:0,due_date:dueDate.toISOString().split('T')[0],paid:false});
-  }
-
-  try {
-    const saved = await saveSellerSaleToBackend(sale, pendingInstallments);
-    Object.assign(sale, saved);
-  } catch (e) {
-    console.error('❌ فشل حفظ الفاتورة المجملة في PostgreSQL:', e);
-    showMessage('❌ فشل حفظ الفاتورة في قاعدة البيانات: ' + e.message, 'error');
-    return false;
-  }
-  // عرض preview
-  document.getElementById('svPreviewTitle').textContent='فاتورة مجملة';
-  const taxInfoBlock=document.getElementById('svTaxInfoBlock');
-  if(taxInfoBlock) taxInfoBlock.style.display='none';
-  const subRow=document.getElementById('svPreviewSubRow');
-  if(subRow) subRow.style.display='none';
-  document.getElementById('svPreviewNo').textContent=invNo;
-  document.getElementById('svPreviewDate').textContent=sale.date;
-  document.getElementById('svPreviewCust').textContent=custName;
-  document.getElementById('svPreviewSeller').textContent=currentUser.name;
-  document.getElementById('svPreviewItems').innerHTML=items.map((item,i)=>`<tr><td>${i+1}</td><td>${item.name}</td><td>—</td><td>—</td><td>${item.qty}</td><td>—</td></tr>`).join('');
-  document.getElementById('svPreviewSub').textContent=fmt(total);
-  document.getElementById('svPreviewTax').textContent=fmt(0);
-  document.getElementById('svPreviewDisc').textContent=fmt(0);
-  document.getElementById('svPreviewTotal').textContent=fmt(total);
-  document.getElementById('svPreviewRem').textContent=fmt(rem);
-  document.getElementById('svPreviewTaxRow').style.display='none';
-  document.getElementById('svInvoicePreview').style.display='block';
-  // مسح
-  svSumItems=[]; svRenderSumItems();
-  document.getElementById('svSumTotal').value='';
-  document.getElementById('svSumPaid').value='0';
-  document.getElementById('svSumTotalDisplay').textContent='د.إ 0.00';
-  document.getElementById('svSumRemaining').textContent='د.إ 0.00';
-  showMessage('✅ تم اعتماد الفاتورة المجملة '+invNo);
-  return true;
-};
-
+/* ⛔ أُزيل التعريف القديم المتعارض — النسخة الموحّدة والمصحّحة موجودة في كتلة "الاتساق المالي النهائي" أسفل الصفحة */
 // ══════════════════════════════════════
 // الفاتورة المجملة
 // ══════════════════════════════════════
@@ -4633,14 +4255,7 @@ function svRenderSumItems(){
 }
 window.svRemoveSumItem = function(i){ svSumItems.splice(i,1); svRenderSumItems(); };
 
-window.svSumUpdateTotals = function(){
-  const total = parseFloat(document.getElementById('svSumTotal').value)||0;
-  const paid  = parseFloat(document.getElementById('svSumPaid').value)||0;
-  const rem   = total - paid;
-  document.getElementById('svSumTotalDisplay').textContent = fmt(total);
-  document.getElementById('svSumRemaining').textContent    = fmt(rem);
-};
-
+/* ⛔ أُزيل التعريف القديم المتعارض — النسخة الموحّدة والمصحّحة موجودة في كتلة "الاتساق المالي النهائي" أسفل الصفحة */
 // ══════════════════════════════════════
 // عرض السعر
 // ══════════════════════════════════════
@@ -4712,42 +4327,10 @@ function qtRenderItems(){
     <td><button class="action-btn btn-delete" onclick="qtRemoveItem(${i})">✕</button></td>
   </tr>`).join('');
 }
-window.qtChangeQty = function(i,v){ qtItems[i].qty=parseInt(v)||1; qtItems[i].total=qtItems[i].qty*qtItems[i].price; qtRenderItems(); qtUpdateTotals(); };
+/* ⛔ أُزيل التعريف القديم المتعارض — النسخة الموحّدة والمصحّحة موجودة في كتلة "الاتساق المالي النهائي" أسفل الصفحة */
 window.qtRemoveItem = function(i){ qtItems.splice(i,1); qtRenderItems(); qtUpdateTotals(); };
 
-window.qtUpdateTotals = function(){
-  const sub  = qtItems.reduce((s,v)=>s+v.total,0);
-  const disc = parseFloat(document.getElementById('qtDiscount').value)||0;
-  const total= sub-disc;
-  document.getElementById('qtSubtotal').textContent = fmt(sub);
-  document.getElementById('qtTotal').textContent    = fmt(total);
-};
-
-window.qtPreview = async function(){
-  if(!qtItems.length){ showMessage('⚠️ أضف صنفاً على الأقل','warning'); return; }
-  const sub    = qtItems.reduce((s,v)=>s+v.total,0);
-  const disc   = parseFloat(document.getElementById('qtDiscount').value)||0;
-  const total  = sub-disc;
-  const qtNo   = 'QT-'+String(qtCounter).padStart(4,'0');
-  document.getElementById('qtPreviewNo').textContent     = qtNo;
-  document.getElementById('qtPreviewDate').textContent   = document.getElementById('qtDate').value||today();
-  document.getElementById('qtPreviewValid').textContent  = document.getElementById('qtValidUntil').value||'—';
-  document.getElementById('qtPreviewCust').textContent   = document.getElementById('qtCustomer').value||'العميل';
-  document.getElementById('qtPreviewSeller').textContent = currentUser?.name||'البائع';
-  document.getElementById('qtPreviewItems').innerHTML    = qtItems.map((item,i)=>`<tr>
-    <td>${i+1}</td><td>${item.name}</td>
-    <td>${fmt(item.price)}</td><td>${item.qty}</td><td>${fmt(item.total)}</td>
-  </tr>`).join('');
-  document.getElementById('qtPreviewSub').textContent   = fmt(sub);
-  document.getElementById('qtPreviewDisc').textContent  = fmt(disc);
-  document.getElementById('qtPreviewTotal').textContent = fmt(total);
-  const notes = document.getElementById('qtNotes').value;
-  document.getElementById('qtPreviewNotes').innerHTML   = notes?`<strong>ملاحظات وشروط:</strong><br>${notes}`:'';
-  document.getElementById('qtPreviewDiv').style.display = 'block';
-  // حفظ رقم العرض
-  qtCounter++; await saveStateValue('bq_qt_counter', qtCounter);
-};
-
+/* ⛔ أُزيل التعريف القديم المتعارض — النسخة الموحّدة والمصحّحة موجودة في كتلة "الاتساق المالي النهائي" أسفل الصفحة */
 window.qtClear = function(){
   qtItems=[]; qtRenderItems(); qtUpdateTotals();
   ['qtCustomer','qtNotes'].forEach(id=>document.getElementById(id).value='');
@@ -4922,45 +4505,7 @@ function loadPurInstTable(){
   }).join('');
 }
 
-window.payPurInst = async function(id){
-  const data = Array.isArray(purInstData) ? purInstData : [];
-  const idx  = data.findIndex(p=>String(p.id)===String(id));
-  if(idx<0) return;
-  const p   = data[idx];
-  data[idx].paid = Number(data[idx].paid)||0;
-  data[idx].remaining = Math.max(0, Number(data[idx].remaining ?? ((Number(data[idx].total)||0)-data[idx].paid)) || 0);
-  data[idx].payments = Array.isArray(data[idx].payments) ? data[idx].payments : [];
-  const rem = data[idx].remaining;
-  if(rem<=0){ showMessage('ℹ️ هذه الفاتورة مسددة بالفعل','info'); return; }
-  const amtStr = prompt(`المتبقي للمورد: ${fmt(rem)}
-أدخل المبلغ المدفوع:`, rem);
-  if(amtStr===null) return;
-  const amt = Math.min(parseFloat(amtStr)||0, rem);
-  if(amt<=0){ showMessage('⚠️ أدخل مبلغاً صحيحاً','warning'); return; }
-  const payDate = prompt('تاريخ الدفع:', today()) || today();
-  data[idx].paid += amt;
-  data[idx].remaining = Math.max(0, data[idx].remaining - amt);
-  data[idx].payments.push({amt, date:payDate});
-  if(data[idx].remaining <= 0){
-    data[idx].closed = true;
-    data[idx].closed_date = payDate;
-    showMessage('✅ تم سداد الفاتورة للمورد بالكامل 🎉');
-  } else {
-    showMessage('✅ تم تسجيل دفع '+fmt(amt)+' للمورد — المتبقي: '+fmt(data[idx].remaining));
-  }
-  const pi = purchasesData.findIndex(x=>String(x.id)===String(p.pur_id));
-  if(pi>=0){
-    purchasesData[pi].paid_amt=Math.min((Number(purchasesData[pi].paid_amt)||0)+amt, Number(purchasesData[pi].total)||0);
-    purchasesData[pi].paid=purchasesData[pi].paid_amt;
-    if(purchasesData[pi].paid_amt >= (Number(purchasesData[pi].total)||0)) purchasesData[pi].payment_confirmed=true;
-    await save('bq_purchases',purchasesData);
-  }
-  purInstData=data;
-  await saveStateValue('bq_pur_inst', purInstData);
-  loadPurInstTable();
-  if(typeof loadPurchasesTable==='function') loadPurchasesTable();
-};
-
+/* ⛔ أُزيل التعريف القديم المتعارض — النسخة الموحّدة والمصحّحة موجودة في كتلة "الاتساق المالي النهائي" أسفل الصفحة */
 // ── ضريبة المشتريات ──
 window.purToggleTax = function(){
   const taxOn = document.getElementById('purTypeTax')?.checked;
@@ -4995,6 +4540,7 @@ window.payPurchase = async function(id){
   const payDate = prompt('تاريخ الدفع:', today()) || today();
   purchasesData[i].paid_amt = Math.min((Number(p.paid_amt)||0)+amt, Number(p.total)||0);
   purchasesData[i].paid = purchasesData[i].paid_amt;
+  purchasesData[i].remaining = Math.max(0,(Number(p.total)||0)-purchasesData[i].paid_amt);
   if(purchasesData[i].paid_amt >= (Number(p.total)||0)){
     purchasesData[i].payment_confirmed=true;
     purchasesData[i].confirmed_at=payDate;
@@ -5002,24 +4548,35 @@ window.payPurchase = async function(id){
   } else {
     showMessage('✅ تم تسجيل دفع '+fmt(amt)+' للمورد');
   }
-  save('bq_purchases', purchasesData);
+  const payPurDbId = purchasesData[i].db_id || purchasesData[i]._id;
+  if (backendToken && payPurDbId) {
+    // تحديث مباشر لسجل المشتريات في قاعدة البيانات (يزامن أيضاً أقساط المشتريات المرتبطة في السيرفر)
+    try {
+      await backendRequest('/purchases/' + encodeURIComponent(payPurDbId), {
+        method: 'PUT',
+        body: JSON.stringify({
+          supplier_name: purchasesData[i].supplier_name,
+          payment_type: purchasesData[i].payment_type || purchasesData[i].pay_type || 'deferred',
+          paid: purchasesData[i].paid_amt,
+          notes: purchasesData[i].notes || ''
+        })
+      });
+      setLocalState('bq_purchases', purchasesData);
+      if (typeof loadBackendState === 'function') await loadBackendState({ refresh:true, silent:true });
+    } catch(e) {
+      console.error('❌ فشل تحديث دفعة المشتريات في قاعدة البيانات:', e);
+      showMessage('❌ فشل حفظ الدفعة في قاعدة البيانات: ' + e.message, 'error');
+      return;
+    }
+  } else {
+    save('bq_purchases', purchasesData);
+  }
   await syncPurchaseInstallmentAfterPayment(id, amt, payDate);
   loadPurchasesTable();
   if(typeof loadPurInstTable==='function') loadPurInstTable();
 };
 
-window.confirmPurchasePayment = async function(id){
-  const i=purchasesData.findIndex(p=>String(p.id)===String(id));
-  if(i<0) return;
-  purchasesData[i].paid_amt=purchasesData[i].total||0;
-  purchasesData[i].paid=purchasesData[i].paid_amt;
-  purchasesData[i].payment_confirmed=true;
-  purchasesData[i].confirmed_at=today();
-  await save('bq_purchases',purchasesData);
-  loadPurchasesTable();
-  showMessage('✅ تم تأكيد الدفع النقدي للمشتريات');
-};
-
+/* ⛔ أُزيل التعريف القديم المتعارض — النسخة الموحّدة والمصحّحة موجودة في كتلة "الاتساق المالي النهائي" أسفل الصفحة */
 window.editPurchase = async function(id){
   const pi=purchasesData.findIndex(p=>String(p.id)===String(id));
   if(pi<0) return;
@@ -5694,21 +5251,7 @@ window.svEditInv = function(id){
   document.getElementById('svEditModal').style.display = 'block';
 };
 
-window.svSaveEditInv = function(){
-  const id = document.getElementById('svEditInvId').value;
-  const idx = salesData.findIndex(s=>s.id===id);
-  if(idx<0) return;
-  salesData[idx].customer_name = document.getElementById('svEditCustomer').value.trim()||salesData[idx].customer_name;
-  salesData[idx].payment_type  = document.getElementById('svEditPayType').value;
-  salesData[idx].paid          = parseFloat(document.getElementById('svEditPaid').value)||0;
-  salesData[idx].remaining     = salesData[idx].total - salesData[idx].paid;
-  salesData[idx].notes         = document.getElementById('svEditNotes').value;
-  save('bq_sales', salesData);
-  document.getElementById('svEditModal').style.display = 'none';
-  svLoadSales();
-  showMessage('✅ تم تعديل الفاتورة بنجاح');
-};
-
+/* ⛔ أُزيل التعريف القديم المتعارض — النسخة الموحّدة والمصحّحة موجودة في كتلة "الاتساق المالي النهائي" أسفل الصفحة */
 // ── تبديل وضع إضافة المشتريات ──
 window.purSwitchMode = function(mode){
   const listEl = document.getElementById('purAddList');
@@ -5727,30 +5270,7 @@ window.purSwitchMode = function(mode){
 };
 
 // ── إضافة يدوي في المشتريات ──
-window.addPurManualItem = function(){
-  const name = document.getElementById('purManualName').value.trim();
-  const code = document.getElementById('purManualCode').value.trim() || 'MNL-'+ Date.now().toString().slice(-4);
-  const qty  = parseInt(document.getElementById('purManualQty').value)||1;
-  const cost = parseFloat(document.getElementById('purManualCost').value)||0;
-  if(!name){ showMessage('⚠️ أدخل اسم الصنف','warning'); return; }
-  if(qty<=0){ showMessage('⚠️ الكمية يجب أن تكون أكبر من 0','warning'); return; }
-  if(!cost){ showMessage('⚠️ أدخل سعر الوحدة','warning'); return; }
-
-  // لا يتم تسجيل الصنف داخل قائمة المنتجات إلا عند حفظ المشتريات
-  let existingProd = productsData.find(p=>p.name===name||p.code===code);
-  if(existingProd){
-    purItems.push({pid:existingProd.id, code:existingProd.code, name, qty, cost, total:qty*cost, is_new_product:false});
-  } else {
-    purItems.push({pid:'new-'+Date.now(), code, name, qty, cost, total:qty*cost, is_new_product:true});
-    showMessage('ℹ️ تم إضافة الصنف للفاتورة فقط، وسيُحفظ داخل المنتجات عند حفظ المشتريات','info');
-  }
-  document.getElementById('purManualName').value='';
-  document.getElementById('purManualCode').value='';
-  document.getElementById('purManualQty').value='1';
-  document.getElementById('purManualCost').value='';
-  renderPurItems();
-};
-
+/* ⛔ أُزيل التعريف القديم المتعارض — النسخة الموحّدة والمصحّحة موجودة في كتلة "الاتساق المالي النهائي" أسفل الصفحة */
 // ── تعديل المخزون ──
 let currentEditIdx = null;
 window.editInvRow = function(idx){
@@ -5814,20 +5334,7 @@ window.svSwitchAddMode = function(mode){
   }
 };
 
-window.svAddManualItem = function(){
-  const name = document.getElementById('svManualName').value.trim();
-  const price = parseFloat(document.getElementById('svManualPrice').value)||0;
-  const qty = parseInt(document.getElementById('svManualQty').value)||1;
-  if(!name){ showMessage('⚠️ أدخل اسم المنتج','warning'); return; }
-  const ex = svItems.find(i=>i.name===name&&i.pid==='manual');
-  if(ex){ ex.qty+=qty; ex.total=ex.qty*ex.price; }
-  else svItems.push({pid:'manual',code:'يدوي',name,price,qty,total:qty*price});
-  svRenderItems(); svUpdateTotals();
-  document.getElementById('svManualName').value='';
-  document.getElementById('svManualPrice').value='';
-  document.getElementById('svManualQty').value='1';
-};
-
+/* ⛔ أُزيل التعريف القديم المتعارض — النسخة الموحّدة والمصحّحة موجودة في كتلة "الاتساق المالي النهائي" أسفل الصفحة */
 // ── Switch Add Mode (Full Invoice) ──
 window.invSwitchAddMode = function(mode){
   if(mode==='list'){
@@ -5851,20 +5358,7 @@ window.invSwitchAddMode = function(mode){
   }
 };
 
-window.addInvManualItem = function(){
-  const name = document.getElementById('invManualName').value.trim();
-  const price = parseFloat(document.getElementById('invManualPrice').value)||0;
-  const qty = parseInt(document.getElementById('invManualQty').value)||1;
-  if(!name){ showMessage('⚠️ أدخل اسم المنتج','warning'); return; }
-  const ex = invItems.find(i=>i.name===name&&i.pid==='manual');
-  if(ex){ ex.qty+=qty; ex.total=ex.qty*ex.price; }
-  else invItems.push({pid:'manual',code:'يدوي',name,price,qty,total:qty*price});
-  renderInvItems(); updateInvTotals();
-  document.getElementById('invManualName').value='';
-  document.getElementById('invManualPrice').value='';
-  document.getElementById('invManualQty').value='1';
-};
-
+/* ⛔ أُزيل التعريف القديم المتعارض — النسخة الموحّدة والمصحّحة موجودة في كتلة "الاتساق المالي النهائي" أسفل الصفحة */
 // ══════════════════════════════════
 // SELLER VIEW FUNCTIONS
 // ══════════════════════════════════
@@ -5896,22 +5390,7 @@ window.svFillPrice = function(){
   else priceEl.value='';
   priceEl.focus();
 };
-window.svAddItem = function(){
-  const pid=document.getElementById('svProductSel').value;
-  if(!pid){ showMessage('⚠️ اختر منتجاً','warning'); return; }
-  const p=productsData.find(x=>x.id===pid); if(!p) return;
-  const qty=parseInt(document.getElementById('svQty').value)||1;
-  const price=parseFloat(document.getElementById('svItemPrice').value)||0;
-  if(!price){ showMessage('⚠️ أدخل سعر المنتج','warning'); document.getElementById('svItemPrice').focus(); return; }
-  const ex=svItems.find(i=>i.pid===pid);
-  const newQty=(ex?(ex.qty||0):0)+qty;
-  if(!ensureStockAvailable(pid,newQty,svItems,ex?svItems.indexOf(ex):-1)) return;
-  if(ex){ ex.qty=newQty; ex.total=ex.qty*ex.price; }
-  else svItems.push({pid,code:p.code,name:p.name,price,qty,total:qty*price});
-  document.getElementById('svItemPrice').value='';
-  document.getElementById('svQty').value='1';
-  svRenderItems(); svUpdateTotals();
-};
+/* ⛔ أُزيل التعريف القديم المتعارض — النسخة الموحّدة والمصحّحة موجودة في كتلة "الاتساق المالي النهائي" أسفل الصفحة */
 function svRenderItems(){
   const tb=document.getElementById('svItemsBody');
   if(!svItems.length){ tb.innerHTML='<tr><td colspan="6" style="text-align:center;padding:16px;color:#94a3b8">لم تتم إضافة منتجات</td></tr>'; return; }
@@ -5923,114 +5402,9 @@ function svRenderItems(){
     <td><button class="action-btn btn-delete" onclick="svRemoveItem(${i})">✕</button></td>
   </tr>`).join('');
 }
-window.svChangeQty=function(i,v){ const qty=parseInt(v)||1; if(!ensureStockAvailable(svItems[i].pid,qty,svItems,i)){ svRenderItems(); return; } svItems[i].qty=qty; svItems[i].total=svItems[i].qty*svItems[i].price; svRenderItems(); svUpdateTotals(); };
+/* ⛔ أُزيل التعريف القديم المتعارض — النسخة الموحّدة والمصحّحة موجودة في كتلة "الاتساق المالي النهائي" أسفل الصفحة */
 window.svRemoveItem=function(i){ svItems.splice(i,1); svRenderItems(); svUpdateTotals(); };
-window.svUpdateTotals=function(){
-  const sub=svItems.reduce((s,v)=>s+v.total,0);
-  const taxOn=document.getElementById('svTaxToggle').checked;
-  const tax=taxOn?sub*0.05:0;
-  const disc=parseFloat(document.getElementById('svDiscount').value)||0;
-  const total=sub+tax-disc;
-  const paid=parseFloat(document.getElementById('svPaid').value)||0;
-  const rem=total-paid;
-  document.getElementById('svSubtotal').textContent=fmt(sub);
-  document.getElementById('svTaxAmt').textContent=fmt(tax);
-  document.getElementById('svTotal').textContent=fmt(total);
-  document.getElementById('svRemaining').textContent=fmt(rem);
-  document.getElementById('svTaxRow').style.display=taxOn?'flex':'none';
-  document.getElementById('svTaxStatus').textContent=taxOn?'مفعّل ✓':'غير مفعّل';
-};
-window.svSaveSale=async function(){
-  const invType=document.querySelector('input[name="svInvType"]:checked')?.value||'tax';
-
-  // فاتورة مجملة — مسار مختلف
-  if(invType==='summary'){
-    return await svSaveSummaryInvoice();
-  }
-
-  if(!svItems.length){ showMessage('⚠️ أضف منتجاً على الأقل','warning'); return; }
-  if(!ensureAllStockAvailable(svItems)) return;
-  const sub=svItems.reduce((s,v)=>s+v.total,0);
-  const taxOn=document.getElementById('svTaxToggle').checked;
-  const tax=(taxOn&&invType==='tax')?sub*0.05:0;
-  const disc=parseFloat(document.getElementById('svDiscount').value)||0;
-  const total=sub+tax-disc;
-  const paid=parseFloat(document.getElementById('svPaid').value)||0;
-  const rem=total-paid;
-  const custName=document.getElementById('svInvCustomer').value.trim()||'عميل نقدي';
-  const custId='cash';
-  const invNo='INV-'+String(invCounter).padStart(4,'0');
-  const sale={id:Date.now()+'',invoice_no:invNo,date:document.getElementById('svInvDate').value,customer_id:custId,customer_name:custName,user_name:currentUser.name,seller_name:currentUser.name,seller_email:currentUser.email,createdBy:currentUser.email,items:[...svItems],subtotal:sub,tax_amount:tax,discount:disc,total,paid,remaining:rem,payment_type:document.getElementById('svInvPayType').value,notes:document.getElementById('svInvNotes').value,inv_type:invType};
-  // لا نعرض نجاح الاعتماد إلا بعد نجاح PostgreSQL.
-  const pendingInstallments = [];
-  // ترحيل تلقائي للأقساط/الآجل لما يكون متبقي
-  if(rem>0){
-    if(sale.payment_type==='installment'){
-      // تقسيط على أقساط متعددة
-      const count=parseInt(document.getElementById('svInstCount').value)||3;
-      const instAmt=rem/count;
-      for(let i=1;i<=count;i++){
-        const dd=new Date(sale.date); dd.setMonth(dd.getMonth()+i);
-        pendingInstallments.push({id:Date.now()+'-'+i,sale_id:sale.id,invoice_no:invNo,customer_id:custId,customer_name:custName,seller_name:currentUser.name,seller_email:currentUser.email,createdBy:currentUser.email,invoice_total:total,invoice_paid:paid,invoice_remaining:rem,amount_due:instAmt,amount_paid:0,due_date:dd.toISOString().split('T')[0],paid:false});
-      }
-    } else if(sale.payment_type==='deferred'||sale.payment_type==='cash'||sale.payment_type==='card'||sale.payment_type==='transfer'){
-      // أي فاتورة فيها متبقي → ترحيل تلقائي كدين واحد
-      const dueDate = new Date(sale.date); dueDate.setMonth(dueDate.getMonth()+1);
-      pendingInstallments.push({
-        id:Date.now()+'',
-        sale_id:sale.id,
-        invoice_no:invNo,
-        customer_id:custId,
-        customer_name:custName,
-        seller_name:currentUser.name,
-        seller_email:currentUser.email,
-        createdBy:currentUser.email,
-        invoice_total:total,
-        invoice_paid:paid,
-        invoice_remaining:rem,
-        amount_due:rem,
-        amount_paid:0,
-        due_date:dueDate.toISOString().split('T')[0],
-        paid:false
-      });
-    }
-  }
-
-  try {
-    const saved = await saveSellerSaleToBackend(sale, pendingInstallments);
-    Object.assign(sale, saved);
-  } catch (e) {
-    console.error('❌ فشل حفظ فاتورة البائع في PostgreSQL:', e);
-    showMessage('❌ فشل حفظ الفاتورة في قاعدة البيانات: ' + e.message, 'error');
-    return false;
-  }
-  // عرض الفاتورة
-  document.getElementById('svPreviewTitle').textContent = invType==='tax'?'فاتورة ضريبية':invType==='summary'?'فاتورة مجملة':'فاتورة بيع';
-  const taxInfoBlock=document.getElementById('svTaxInfoBlock');
-  if(taxInfoBlock) taxInfoBlock.style.display = invType==='tax'?'block':'none';
-  const subRow=document.getElementById('svPreviewSubRow');
-  if(subRow) subRow.style.display = invType==='tax'?'flex':'none';
-  document.getElementById('svPreviewNo').textContent=invNo;
-  document.getElementById('svPreviewDate').textContent=sale.date;
-  document.getElementById('svPreviewCust').textContent=custName;
-  document.getElementById('svPreviewSeller').textContent=currentUser.name;
-  // فاتورة مجملة — تخفي تفاصيل الأسعار وتعرض الأصناف بدون سعر
-  if(invType==='summary'){
-    document.getElementById('svPreviewItems').innerHTML=svItems.map((item,i)=>`<tr><td>${i+1}</td><td>${item.name}</td><td><code>${item.code||'—'}</code></td><td>—</td><td>${item.qty}</td><td>—</td></tr>`).join('');
-  } else {
-    document.getElementById('svPreviewItems').innerHTML=svItems.map((item,i)=>`<tr><td>${i+1}</td><td>${item.name}</td><td><code>${item.code||'—'}</code></td><td>${fmt(item.price)}</td><td>${item.qty}</td><td>${fmt(item.total)}</td></tr>`).join('');
-  }
-  document.getElementById('svPreviewSub').textContent=fmt(sub);
-  document.getElementById('svPreviewTax').textContent=fmt(tax);
-  document.getElementById('svPreviewDisc').textContent=fmt(disc);
-  document.getElementById('svPreviewTotal').textContent=fmt(total);
-  document.getElementById('svPreviewRem').textContent=fmt(rem);
-  document.getElementById('svPreviewTaxRow').style.display=taxOn?'flex':'none';
-  document.getElementById('svInvoicePreview').style.display='block';
-  svClearInvoice();
-  showMessage('✅ تم اعتماد الفاتورة '+invNo+' بنجاح');
-  return true;
-};
+/* ⛔ أُزيل التعريف القديم المتعارض — النسخة الموحّدة والمصحّحة موجودة في كتلة "الاتساق المالي النهائي" أسفل الصفحة */
 window.svSavePrint=async function(){
   const ok = await svSaveSale();
   if(ok) printInvoiceOnly('svInvoicePreview');
@@ -6149,14 +5523,833 @@ window.svPayInst=async function(id){
   installmentsData[i].status=installmentsData[i].paid?'paid':'pending';
   installmentsData[i].paid_date=installmentsData[i].paid?payDate:(installmentsData[i].paid_date||null);
   installmentsData[i].last_payment=payDate;
-  await save('bq_installments',installmentsData);
+  if (backendToken) { setLocalState('bq_installments', installmentsData); }
+  else { await save('bq_installments',installmentsData); }
   const ci=customersData.findIndex(c=>String(c.id)===String(installmentsData[i].customer_id));
-  if(ci>=0){ customersData[ci].balance_due=Math.max(0,(Number(customersData[ci].balance_due)||0)-amt); await save('bq_customers',customersData); }
+  if(ci>=0){
+    customersData[ci].balance_due=Math.max(0,(Number(customersData[ci].balance_due)||0)-amt);
+    if (backendToken) { setLocalState('bq_customers', customersData); }
+    else { await save('bq_customers',customersData); }
+  }
   const updatedSale=await syncSaleFromInstallments(installmentsData[i].sale_id, installmentsData[i].invoice_no, payDate);
   // ✅ تثبيت الدفع في جداول قاعدة البيانات الفعلية حتى يختفي زر الدفع وتظهر الفاتورة مسددة في صفحة فواتيري
   await persistInstallmentPaymentToBackend(installmentsData[i], updatedSale);
   await svLoadInstallments(); showMessage('✅ تم تسجيل الدفع');
 };
+</script>
+
+
+
+<script>
+/* ═══════════════════════════════════════
+   QUANTIXA/BQ FINAL financial consistency patch — 2026-06
+   الهدف:
+   - مصدر واحد نهائي لحساب إجمالي الفواتير/العروض/المشتريات.
+   - الضريبة تُحسب على الصافي بعد الخصم لا قبل الخصم.
+   - منع السالب، الخصم الزائد، الدفع الزائد، والكمية/السعر غير الصحيح.
+   - حفظ البيع + الأقساط في عملية واحدة من خلال PostgreSQL عند دعم السيرفر لذلك.
+   - إبقاء الأزرار التي تغيّر الأرصدة/المخزون متزامنة مع قاعدة البيانات.
+═══════════════════════════════════════ */
+(function(){
+  const TAX_RATE = 0.05;
+  const n = (v, d=0) => { const x = Number.parseFloat(v); return Number.isFinite(x) ? x : d; };
+  const int = (v, d=0) => { const x = Number.parseInt(v, 10); return Number.isFinite(x) ? x : d; };
+  const money = v => Math.round((n(v,0) + Number.EPSILON) * 100) / 100;
+  const clamp = (v, min=0, max=Number.POSITIVE_INFINITY) => money(Math.min(Math.max(n(v,0), min), max));
+  const qty = v => Math.max(1, int(v,1));
+  const el = id => document.getElementById(id);
+  const val = id => el(id)?.value ?? '';
+  const setVal = (id, value) => { const x=el(id); if(x) x.value = String(value); };
+  const setText = (id, value) => { const x=el(id); if(x) x.textContent = value; };
+  const notify = (msg, type='warning') => (typeof showMessage === 'function' ? showMessage(msg,type) : alert(msg));
+  const fmtSafe = v => (typeof fmt === 'function' ? fmt(v) : ('د.إ ' + money(v).toFixed(2)));
+  const asArray = v => Array.isArray(v) ? v : [];
+
+  function normalizeInvoiceItem(item){
+    const q = qty(item?.qty);
+    const price = money(Math.max(0, n(item?.price ?? item?.sell_price ?? item?.cost, 0)));
+    return { ...(item||{}), qty:q, price, total:money(q*price) };
+  }
+
+  function normalizePurchaseItem(item){
+    const q = qty(item?.qty);
+    const cost = money(Math.max(0, n(item?.cost ?? item?.price ?? item?.buy_price, 0)));
+    return { ...(item||{}), qty:q, cost, price:cost, total:money(q*cost) };
+  }
+
+  function computeInvoiceTotals(items, discountValue, paidValue, taxOn){
+    const normalized = asArray(items).map(normalizeInvoiceItem);
+    const subtotal = money(normalized.reduce((sum,item)=>sum + item.total, 0));
+    const discount = clamp(discountValue, 0, subtotal);
+    const taxable = money(Math.max(0, subtotal - discount));
+    const tax = money(taxOn ? taxable * TAX_RATE : 0);
+    const total = money(taxable + tax);
+    const paid = clamp(paidValue, 0, total);
+    const remaining = money(Math.max(0, total - paid));
+    return { items: normalized, subtotal, discount, taxable, tax, total, paid, remaining };
+  }
+
+  function computePurchaseTotals(items, taxOn, paidValue){
+    const normalized = asArray(items).map(normalizePurchaseItem);
+    const subtotal = money(normalized.reduce((sum,item)=>sum + item.total, 0));
+    const tax = money(taxOn ? subtotal * TAX_RATE : 0);
+    const total = money(subtotal + tax);
+    const paid = clamp(paidValue, 0, total);
+    const remaining = money(Math.max(0, total - paid));
+    return { items: normalized, subtotal, tax, total, paid, remaining };
+  }
+
+  window.__bqMoney = money;
+  window.__bqComputeInvoiceTotals = computeInvoiceTotals;
+  window.__bqComputePurchaseTotals = computePurchaseTotals;
+
+  function safeInvoiceNo(){
+    const counter = Math.max(1, int(typeof invCounter !== 'undefined' ? invCounter : 1, 1));
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mi = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    const ms = String(d.getMilliseconds()).padStart(3, '0');
+    return `INV-${yyyy}${mm}${dd}-${String(counter).padStart(4,'0')}-${hh}${mi}${ss}${ms}`;
+  }
+
+  async function markInvoiceCounterUsed(){
+    try {
+      if (typeof invCounter === 'undefined') return;
+      invCounter = Math.max(1, int(invCounter, 1)) + 1;
+      setLocalState('bq_inv_counter', invCounter);
+      if (typeof saveStateValue === 'function') {
+        await saveStateValue('bq_inv_counter', invCounter, { silent:true });
+      }
+    } catch (e) {
+      console.warn('⚠️ تعذر تحديث عداد الفواتير:', e);
+    }
+  }
+
+  function buildInstallmentsForSale(sale, countInputId){
+    const pending = [];
+    const remaining = money(sale?.remaining || 0);
+    if (remaining <= 0) return pending;
+    const payType = sale.payment_type || 'cash';
+    if (payType === 'installment') {
+      const count = Math.max(1, int(val(countInputId), 3));
+      const base = money(remaining / count);
+      let allocated = 0;
+      for (let k=1; k<=count; k++) {
+        const due = k === count ? money(remaining - allocated) : base;
+        allocated = money(allocated + due);
+        const dd = new Date(sale.date || new Date()); dd.setMonth(dd.getMonth()+k);
+        pending.push({
+          id: `${sale.id || Date.now()}-${k}`,
+          legacy_id: `${sale.id || Date.now()}-${k}`,
+          sale_id: sale.id,
+          invoice_no: sale.invoice_no,
+          customer_id: sale.customer_id || 'cash',
+          customer_name: sale.customer_name || 'عميل نقدي',
+          seller_name: sale.seller_name,
+          seller_email: sale.seller_email,
+          createdBy: sale.createdBy,
+          invoice_total: sale.total,
+          invoice_paid: sale.paid,
+          invoice_remaining: remaining,
+          amount_due: due,
+          amount: due,
+          amount_paid: 0,
+          remaining: due,
+          due_date: dd.toISOString().slice(0,10),
+          paid: false,
+          status: 'pending',
+          notes: 'فاتورة: ' + (sale.invoice_no || '')
+        });
+      }
+    } else {
+      const dd = new Date(sale.date || new Date()); dd.setMonth(dd.getMonth()+1);
+      pending.push({
+        id: String(sale.id || Date.now()),
+        legacy_id: String(sale.id || Date.now()),
+        sale_id: sale.id,
+        invoice_no: sale.invoice_no,
+        customer_id: sale.customer_id || 'cash',
+        customer_name: sale.customer_name || 'عميل نقدي',
+        seller_name: sale.seller_name,
+        seller_email: sale.seller_email,
+        createdBy: sale.createdBy,
+        invoice_total: sale.total,
+        invoice_paid: sale.paid,
+        invoice_remaining: remaining,
+        amount_due: remaining,
+        amount: remaining,
+        amount_paid: 0,
+        remaining,
+        due_date: dd.toISOString().slice(0,10),
+        paid: false,
+        status: 'pending',
+        notes: 'فاتورة: ' + (sale.invoice_no || '')
+      });
+    }
+    return pending;
+  }
+
+  window.normalizeInstallmentForBackend = function(row){
+    const due = money(Math.max(0, n(row?.amount_due ?? row?.amount ?? row?.invoice_remaining, 0)));
+    let paid = n(row?.amount_paid ?? row?.paid_amount, NaN);
+    if (!Number.isFinite(paid)) paid = (row?.status === 'paid' || row?.paid === true) ? due : n(row?.paid, 0);
+    paid = clamp(paid, 0, due);
+    const remaining = money(Math.max(0, due - paid));
+    return {
+      legacy_id: row?.legacy_id || row?.id || null,
+      sale_id: row?.sale_id || '',
+      invoice_no: row?.invoice_no || '',
+      customer_id: row?.customer_id || 'cash',
+      customer_name: row?.customer_name || 'عميل نقدي',
+      seller_name: row?.seller_name || currentUser?.name || '',
+      seller_email: row?.seller_email || currentUser?.email || '',
+      createdBy: row?.createdBy || currentUser?.email || '',
+      invoice_total: money(row?.invoice_total || 0),
+      invoice_paid: money(row?.invoice_paid || 0),
+      invoice_remaining: money(row?.invoice_remaining ?? remaining),
+      amount: due,
+      amount_due: due,
+      paid,
+      amount_paid: paid,
+      remaining,
+      due_date: row?.due_date || null,
+      status: remaining <= 0 ? 'paid' : 'pending',
+      notes: row?.notes || ('فاتورة: ' + (row?.invoice_no || ''))
+    };
+  };
+
+  window.saveSellerSaleToBackend = async function(sale, installmentRows = []){
+    if (!backendToken) throw new Error('لا يوجد اتصال آمن بالسيرفر. سجل الدخول مرة أخرى.');
+    const normalizedSale = { ...sale, items: asArray(sale.items).map(normalizeInvoiceItem) };
+    const installmentsPayload = asArray(installmentRows).map(window.normalizeInstallmentForBackend);
+    const savedSale = await backendRequest('/sales', {
+      method: 'POST',
+      body: JSON.stringify({ ...normalizedSale, installments: installmentsPayload })
+    });
+    const savedInstallments = asArray(savedSale.installments);
+    const finalSale = {
+      ...normalizedSale,
+      ...savedSale,
+      items: normalizedSale.items,
+      seller_name: normalizedSale.seller_name || currentUser?.name || savedSale.seller_name,
+      seller_email: normalizedSale.seller_email || currentUser?.email || savedSale.seller_email,
+      createdBy: normalizedSale.createdBy || currentUser?.email || savedSale.createdBy
+    };
+    delete finalSale.installments;
+    salesData = mergeRecordsById(asArray(salesData), [finalSale]);
+    setLocalState('bq_sales', salesData);
+    if (savedInstallments.length) {
+      installmentsData = mergeRecordsById(asArray(installmentsData), savedInstallments);
+      setLocalState('bq_installments', installmentsData);
+    } else if (installmentsPayload.length) {
+      installmentsData = mergeRecordsById(asArray(installmentsData), installmentsPayload);
+      setLocalState('bq_installments', installmentsData);
+    }
+    if (typeof loadSellerProductsLive === 'function') await loadSellerProductsLive();
+    if (typeof getSellerSalesLive === 'function') await getSellerSalesLive();
+    return finalSale;
+  };
+  try { saveSellerSaleToBackend = window.saveSellerSaleToBackend; } catch (_) {}
+
+  async function refreshAfterAtomicWrite(){
+    try {
+      if (currentUser?.role === 'seller') {
+        if (typeof loadSellerProductsLive === 'function') await loadSellerProductsLive();
+        if (typeof getSellerSalesLive === 'function') await getSellerSalesLive();
+        if (typeof svLoadInstallments === 'function') await svLoadInstallments();
+      } else if (typeof loadBackendState === 'function') {
+        await loadBackendState({ refresh:true, silent:true });
+      }
+      if (typeof refreshVisibleDataViews === 'function') refreshVisibleDataViews();
+    } catch(e) { console.warn('⚠️ Refresh after atomic write failed:', e); }
+  }
+
+  async function saveSaleAtomically(sale, pendingInstallments){
+    const saved = await window.saveSellerSaleToBackend(sale, pendingInstallments);
+    Object.assign(sale, saved || {});
+    await markInvoiceCounterUsed();
+    await refreshAfterAtomicWrite();
+    if (typeof refreshDashboard === 'function') refreshDashboard();
+    return sale;
+  }
+
+  window.updateInvTotals = function(){
+    invItems = asArray(invItems).map(normalizeInvoiceItem);
+    const totals = computeInvoiceTotals(invItems, val('invDiscount'), val('invPaid'), !!el('taxToggle')?.checked);
+    invItems = totals.items;
+    setVal('invDiscount', totals.discount);
+    setVal('invPaid', totals.paid);
+    setText('invSubtotal', fmtSafe(totals.subtotal));
+    setText('invTax', fmtSafe(totals.tax));
+    setText('invTotal', fmtSafe(totals.total));
+    setText('invRemaining', fmtSafe(totals.remaining));
+    ['taxRow','invSubtotalRow'].forEach(id => { const x=el(id); if(x) x.style.display = totals.tax > 0 ? 'flex' : 'none'; });
+    const status = el('taxStatus'); if(status) status.textContent = totals.tax > 0 ? 'مفعّل ✓' : 'غير مفعّل';
+    return totals;
+  };
+
+  window.addInvItem = function(){
+    const pid = val('invProductSel');
+    if(!pid){ notify('⚠️ اختر منتجاً'); return; }
+    const p = asArray(productsData).find(x => String(x.id) === String(pid));
+    if(!p){ notify('❌ المنتج غير موجود','error'); return; }
+    const q = qty(val('invQty'));
+    const price = money(Math.max(0, n(val('invItemPrice'), 0)));
+    if(price <= 0){ notify('⚠️ أدخل سعر منتج صحيح'); el('invItemPrice')?.focus(); return; }
+    const existing = invItems.find(x => String(x.pid) === String(pid));
+    const nextQty = (existing ? qty(existing.qty) : 0) + q;
+    if(typeof ensureStockAvailable === 'function' && !ensureStockAvailable(pid, nextQty, invItems, existing ? invItems.indexOf(existing) : -1)) return;
+    if(existing) Object.assign(existing, normalizeInvoiceItem({ ...existing, qty: nextQty }));
+    else invItems.push(normalizeInvoiceItem({ pid, code:p.code, name:p.name, price, qty:q }));
+    setVal('invItemPrice',''); setVal('invQty','1');
+    renderInvItems(); updateInvTotals();
+  };
+
+  window.addInvManualItem = function(){
+    const name = String(val('invManualName')).trim();
+    const price = money(Math.max(0, n(val('invManualPrice'), 0)));
+    const q = qty(val('invManualQty'));
+    if(!name){ notify('⚠️ أدخل اسم المنتج'); return; }
+    if(price <= 0){ notify('⚠️ أدخل سعر المنتج'); el('invManualPrice')?.focus(); return; }
+    const ex = invItems.find(i => String(i.name) === name && String(i.pid) === 'manual');
+    if(ex) Object.assign(ex, normalizeInvoiceItem({ ...ex, qty: qty(ex.qty) + q }));
+    else invItems.push(normalizeInvoiceItem({ pid:'manual', code:'يدوي', name, price, qty:q }));
+    setVal('invManualName',''); setVal('invManualPrice',''); setVal('invManualQty','1');
+    renderInvItems(); updateInvTotals();
+  };
+
+  window.changeInvQty = function(idx, qtyValue){
+    if(!invItems[idx]) return;
+    const q = qty(qtyValue);
+    if(typeof ensureStockAvailable === 'function' && !ensureStockAvailable(invItems[idx].pid, q, invItems, idx)){ renderInvItems(); return; }
+    invItems[idx] = normalizeInvoiceItem({ ...invItems[idx], qty:q });
+    renderInvItems(); updateInvTotals();
+  };
+
+  window.saveSale = async function(){
+    if(!asArray(invItems).length){ notify('⚠️ أضف منتجاً على الأقل'); return false; }
+    invItems = asArray(invItems).map(normalizeInvoiceItem);
+    if(typeof ensureAllStockAvailable === 'function' && !ensureAllStockAvailable(invItems)) return false;
+    const totals = updateInvTotals();
+    if(totals.total <= 0){ notify('⚠️ إجمالي الفاتورة يجب أن يكون أكبر من صفر'); return false; }
+    const custId = val('invCustomer') || 'cash';
+    const custName = custId === 'cash' ? 'عميل نقدي' : (asArray(customersData).find(c => String(c.id) === String(custId))?.name || 'عميل');
+    const invNo = safeInvoiceNo();
+    const sale = {
+      id:String(Date.now()), legacy_id:String(Date.now()), invoice_no:invNo, date:val('invDate') || today(),
+      customer_id:custId, customer_name:custName,
+      user_name:currentUser?.name || '', seller_name:currentUser?.name || '', seller_email:currentUser?.email || '', createdBy:currentUser?.email || '',
+      items:totals.items.map(x=>({...x})), subtotal:totals.subtotal, discount:totals.discount, taxable:totals.taxable,
+      tax_amount:totals.tax, total:totals.total, paid:totals.paid, remaining:totals.remaining,
+      payment_type:val('invPayType') || 'cash', notes:val('invNotes'), inv_type:totals.tax > 0 ? 'tax' : 'normal'
+    };
+    try{
+      await saveSaleAtomically(sale, buildInstallmentsForSale(sale, 'invInstCount'));
+      showInvoicePreview(sale);
+      clearInvoice();
+      notify('✅ تم حفظ الفاتورة ' + invNo + ' بنجاح','success');
+      return true;
+    } catch(e){ console.error(e); notify('❌ فشل حفظ الفاتورة: ' + e.message,'error'); return false; }
+  };
+
+  window.svUpdateTotals = function(){
+    svItems = asArray(svItems).map(normalizeInvoiceItem);
+    const invType = document.querySelector('input[name="svInvType"]:checked')?.value || 'tax';
+    const totals = computeInvoiceTotals(svItems, val('svDiscount'), val('svPaid'), !!el('svTaxToggle')?.checked && invType === 'tax');
+    svItems = totals.items;
+    setVal('svDiscount', totals.discount); setVal('svPaid', totals.paid);
+    setText('svSubtotal', fmtSafe(totals.subtotal)); setText('svTaxAmt', fmtSafe(totals.tax)); setText('svTotal', fmtSafe(totals.total)); setText('svRemaining', fmtSafe(totals.remaining));
+    const row=el('svTaxRow'); if(row) row.style.display = totals.tax > 0 ? 'flex' : 'none';
+    const status=el('svTaxStatus'); if(status) status.textContent = totals.tax > 0 ? 'مفعّل ✓' : 'غير مفعّل';
+    return totals;
+  };
+
+  window.svAddItem = function(){
+    const pid = val('svProductSel'); if(!pid){ notify('⚠️ اختر منتجاً'); return; }
+    const p = asArray(productsData).find(x => String(x.id) === String(pid)); if(!p){ notify('❌ المنتج غير موجود','error'); return; }
+    const q = qty(val('svQty')); const price = money(Math.max(0, n(val('svItemPrice'),0)));
+    if(price <= 0){ notify('⚠️ أدخل سعر المنتج'); el('svItemPrice')?.focus(); return; }
+    const ex = svItems.find(x => String(x.pid) === String(pid));
+    const nextQty = (ex ? qty(ex.qty) : 0) + q;
+    if(typeof ensureStockAvailable === 'function' && !ensureStockAvailable(pid, nextQty, svItems, ex ? svItems.indexOf(ex) : -1)) return;
+    if(ex) Object.assign(ex, normalizeInvoiceItem({ ...ex, qty: nextQty }));
+    else svItems.push(normalizeInvoiceItem({ pid, code:p.code, name:p.name, price, qty:q }));
+    setVal('svItemPrice',''); setVal('svQty','1'); svRenderItems(); svUpdateTotals();
+  };
+
+  window.svAddManualItem = function(){
+    const name = String(val('svManualName')).trim();
+    const price = money(Math.max(0, n(val('svManualPrice'), 0)));
+    const q = qty(val('svManualQty'));
+    if(!name){ notify('⚠️ أدخل اسم المنتج'); return; }
+    if(price <= 0){ notify('⚠️ أدخل سعر المنتج'); el('svManualPrice')?.focus(); return; }
+    const ex = svItems.find(i => String(i.name) === name && String(i.pid) === 'manual');
+    if(ex) Object.assign(ex, normalizeInvoiceItem({ ...ex, qty: qty(ex.qty) + q }));
+    else svItems.push(normalizeInvoiceItem({ pid:'manual', code:'يدوي', name, price, qty:q }));
+    setVal('svManualName',''); setVal('svManualPrice',''); setVal('svManualQty','1');
+    svRenderItems(); svUpdateTotals();
+  };
+
+  window.svChangeQty = function(idx, qtyValue){
+    if(!svItems[idx]) return;
+    const q = qty(qtyValue);
+    if(typeof ensureStockAvailable === 'function' && !ensureStockAvailable(svItems[idx].pid, q, svItems, idx)){ svRenderItems(); return; }
+    svItems[idx] = normalizeInvoiceItem({ ...svItems[idx], qty:q });
+    svRenderItems(); svUpdateTotals();
+  };
+
+  window.svSaveSale = async function(){
+    const invType = document.querySelector('input[name="svInvType"]:checked')?.value || 'tax';
+    if(invType === 'summary') return await svSaveSummaryInvoice();
+    if(!asArray(svItems).length){ notify('⚠️ أضف منتجاً على الأقل'); return false; }
+    svItems = asArray(svItems).map(normalizeInvoiceItem);
+    if(typeof ensureAllStockAvailable === 'function' && !ensureAllStockAvailable(svItems)) return false;
+    const totals = svUpdateTotals();
+    if(totals.total <= 0){ notify('⚠️ إجمالي الفاتورة يجب أن يكون أكبر من صفر'); return false; }
+    const custName = String(val('svInvCustomer') || '').trim() || 'عميل نقدي';
+    const invNo = safeInvoiceNo();
+    const sale = {
+      id:String(Date.now()), legacy_id:String(Date.now()), invoice_no:invNo, date:val('svInvDate') || today(),
+      customer_id:'cash', customer_name:custName,
+      user_name:currentUser?.name || '', seller_name:currentUser?.name || '', seller_email:currentUser?.email || '', createdBy:currentUser?.email || '',
+      items:totals.items.map(x=>({...x})), subtotal:totals.subtotal, discount:totals.discount, taxable:totals.taxable,
+      tax_amount:totals.tax, total:totals.total, paid:totals.paid, remaining:totals.remaining,
+      payment_type:val('svInvPayType') || 'cash', notes:val('svInvNotes'), inv_type:invType
+    };
+    try { await saveSaleAtomically(sale, buildInstallmentsForSale(sale, 'svInstCount')); }
+    catch(e){ console.error(e); notify('❌ فشل حفظ الفاتورة في قاعدة البيانات: ' + e.message,'error'); return false; }
+    setText('svPreviewTitle', invType === 'tax' ? 'فاتورة ضريبية' : 'فاتورة بيع');
+    const taxInfoBlock=el('svTaxInfoBlock'); if(taxInfoBlock) taxInfoBlock.style.display = invType === 'tax' ? 'block' : 'none';
+    const subRow=el('svPreviewSubRow'); if(subRow) subRow.style.display = invType === 'tax' ? 'flex' : 'none';
+    setText('svPreviewNo', invNo); setText('svPreviewDate', sale.date); setText('svPreviewCust', custName); setText('svPreviewSeller', currentUser?.name || '');
+    const rows = totals.items.map((item,k)=>`<tr><td>${k+1}</td><td>${item.name}</td><td><code>${item.code||'—'}</code></td><td>${fmtSafe(item.price)}</td><td>${item.qty}</td><td>${fmtSafe(item.total)}</td></tr>`).join('');
+    if(el('svPreviewItems')) el('svPreviewItems').innerHTML = rows;
+    setText('svPreviewSub', fmtSafe(totals.subtotal)); setText('svPreviewTax', fmtSafe(totals.tax)); setText('svPreviewDisc', fmtSafe(totals.discount)); setText('svPreviewTotal', fmtSafe(totals.total)); setText('svPreviewRem', fmtSafe(totals.remaining));
+    const tr=el('svPreviewTaxRow'); if(tr) tr.style.display = totals.tax > 0 ? 'flex' : 'none';
+    const pv=el('svInvoicePreview'); if(pv) pv.style.display='block';
+    svClearInvoice(); notify('✅ تم اعتماد الفاتورة ' + invNo + ' بنجاح','success'); return true;
+  };
+
+  window.svSumUpdateTotals = function(){
+    const total = money(Math.max(0, n(val('svSumTotal'), 0)));
+    const paid = clamp(val('svSumPaid'), 0, total);
+    setVal('svSumPaid', paid);
+    setText('svSumTotalDisplay', fmtSafe(total)); setText('svSumRemaining', fmtSafe(total - paid));
+    return { total, paid, remaining:money(total-paid) };
+  };
+
+  window.svSaveSummaryInvoice = async function(){
+    const t = svSumUpdateTotals();
+    if(t.total <= 0){ notify('⚠️ أدخل إجمالي فاتورة صحيح'); el('svSumTotal')?.focus(); return false; }
+    const custName = String(val('svInvCustomer') || '').trim() || 'عميل نقدي';
+    const invNo = safeInvoiceNo();
+    const items = (typeof svSumItems !== 'undefined' && svSumItems.length)
+      ? svSumItems.map(x => ({ pid:'sum', name:String(x.name||'بند'), qty:qty(x.qty), price:0, total:0, code:'—' }))
+      : [{ pid:'sum', name:'بنود متنوعة', qty:1, price:t.total, total:t.total, code:'—' }];
+    const sale = {
+      id:String(Date.now()), legacy_id:String(Date.now()), invoice_no:invNo, date:val('svInvDate') || today(), customer_id:'cash', customer_name:custName,
+      user_name:currentUser?.name || '', seller_name:currentUser?.name || '', seller_email:currentUser?.email || '', createdBy:currentUser?.email || '',
+      items, subtotal:t.total, discount:0, taxable:t.total, tax_amount:0, total:t.total, paid:t.paid, remaining:t.remaining,
+      payment_type:val('svInvPayType') || 'cash', notes:val('svInvNotes'), inv_type:'summary'
+    };
+    try { await saveSaleAtomically(sale, buildInstallmentsForSale(sale, 'svInstCount')); }
+    catch(e){ console.error(e); notify('❌ فشل حفظ الفاتورة في قاعدة البيانات: ' + e.message,'error'); return false; }
+    setText('svPreviewTitle','فاتورة مجملة');
+    const taxInfoBlock=el('svTaxInfoBlock'); if(taxInfoBlock) taxInfoBlock.style.display='none';
+    const subRow=el('svPreviewSubRow'); if(subRow) subRow.style.display='none';
+    setText('svPreviewNo', invNo); setText('svPreviewDate', sale.date); setText('svPreviewCust', custName); setText('svPreviewSeller', currentUser?.name || '');
+    if(el('svPreviewItems')) el('svPreviewItems').innerHTML = items.map((item,k)=>`<tr><td>${k+1}</td><td>${item.name}</td><td>—</td><td>—</td><td>${item.qty}</td><td>—</td></tr>`).join('');
+    setText('svPreviewSub', fmtSafe(t.total)); setText('svPreviewTax', fmtSafe(0)); setText('svPreviewDisc', fmtSafe(0)); setText('svPreviewTotal', fmtSafe(t.total)); setText('svPreviewRem', fmtSafe(t.remaining));
+    const tr=el('svPreviewTaxRow'); if(tr) tr.style.display='none'; const pv=el('svInvoicePreview'); if(pv) pv.style.display='block';
+    if(typeof svSumItems !== 'undefined') svSumItems=[]; if(typeof svRenderSumItems === 'function') svRenderSumItems(); setVal('svSumTotal',''); setVal('svSumPaid','0'); svSumUpdateTotals();
+    notify('✅ تم اعتماد الفاتورة المجملة ' + invNo,'success'); return true;
+  };
+
+  window.qtChangeQty = function(idx, v){ if(!qtItems[idx]) return; qtItems[idx] = normalizeInvoiceItem({ ...qtItems[idx], qty:qty(v) }); qtRenderItems(); qtUpdateTotals(); };
+  window.qtUpdateTotals = function(){
+    qtItems = asArray(qtItems).map(normalizeInvoiceItem);
+    const t = computeInvoiceTotals(qtItems, val('qtDiscount'), 0, false);
+    qtItems = t.items; setVal('qtDiscount', t.discount); setText('qtSubtotal', fmtSafe(t.subtotal)); setText('qtTotal', fmtSafe(t.total)); return t;
+  };
+  window.qtPreview = async function(){
+    if(!asArray(qtItems).length){ notify('⚠️ أضف صنفاً على الأقل'); return false; }
+    const t = qtUpdateTotals(); if(t.total <= 0){ notify('⚠️ إجمالي عرض السعر يجب أن يكون أكبر من صفر'); return false; }
+    const qtNo = 'QT-' + String(qtCounter).padStart(4,'0');
+    setText('qtPreviewNo', qtNo); setText('qtPreviewDate', val('qtDate') || today()); setText('qtPreviewValid', val('qtValidUntil') || '—'); setText('qtPreviewCust', val('qtCustomer') || 'العميل'); setText('qtPreviewSeller', currentUser?.name || 'البائع');
+    if(el('qtPreviewItems')) el('qtPreviewItems').innerHTML = qtItems.map((item,k)=>`<tr><td>${k+1}</td><td>${item.name}</td><td>${fmtSafe(item.price)}</td><td>${item.qty}</td><td>${fmtSafe(item.total)}</td></tr>`).join('');
+    setText('qtPreviewSub', fmtSafe(t.subtotal)); setText('qtPreviewDisc', fmtSafe(t.discount)); setText('qtPreviewTotal', fmtSafe(t.total));
+    const notes = String(val('qtNotes') || '');
+    if(el('qtPreviewNotes')) el('qtPreviewNotes').innerHTML = notes ? `<strong>ملاحظات وشروط:</strong><br>${notes.replace(/[<>&]/g, c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))}` : '';
+    if(el('qtPreviewDiv')) el('qtPreviewDiv').style.display='block';
+    qtCounter++; await saveStateValue('bq_qt_counter', qtCounter); return true;
+  };
+
+  window.addPurItem = function(){
+    const pid = val('purProductSel');
+    if(!pid){ notify('⚠️ اختر منتجاً'); return; }
+    const p = asArray(productsData).find(x => String(x.id) === String(pid));
+    if(!p){ notify('❌ المنتج غير موجود','error'); return; }
+    const q = qty(val('purQtyIn'));
+    const cost = money(Math.max(0, n(val('purCost'), p.buy_price || 0)));
+    if(cost <= 0){ notify('⚠️ أدخل تكلفة صحيحة'); el('purCost')?.focus(); return; }
+    purItems.push(normalizePurchaseItem({ pid, code:p.code, name:p.name, qty:q, cost }));
+    renderPurItems();
+  };
+
+  window.addPurManualItem = function(){
+    const name = String(val('purManualName')).trim();
+    const q = qty(val('purManualQty'));
+    const cost = money(Math.max(0, n(val('purManualCost'), 0)));
+    if(!name){ notify('⚠️ أدخل اسم الصنف'); return; }
+    if(cost <= 0){ notify('⚠️ أدخل تكلفة صحيحة'); el('purManualCost')?.focus(); return; }
+    const code = String(val('purManualCode') || '').trim();
+    purItems.push(normalizePurchaseItem({ pid:'new-' + Date.now(), code, name, qty:q, cost, is_new_product:true }));
+    setVal('purManualName',''); setVal('purManualCode',''); setVal('purManualQty','1'); setVal('purManualCost','');
+    renderPurItems();
+  };
+
+  window.renderPurItems = function(){
+    const tb = el('purItemsBody');
+    if(!tb) return;
+    if(!asArray(purItems).length){ tb.innerHTML='<tr><td colspan="5" style="text-align:center;padding:20px;color:#94a3b8">لم تتم إضافة أصناف</td></tr>'; setText('purSubtotal', fmtSafe(0)); setText('purTaxAmt', fmtSafe(0)); setText('purTotal', fmtSafe(0)); return; }
+    purItems = purItems.map(normalizePurchaseItem);
+    tb.innerHTML = purItems.map((item,i)=>`<tr><td>${item.name}</td><td>${item.qty}</td><td>${fmtSafe(item.cost)}</td><td>${fmtSafe(item.total)}</td><td><button class="action-btn btn-delete" onclick="removePurItem(${i})">✕</button></td></tr>`).join('');
+    const totals = computePurchaseTotals(purItems, !!el('purTypeTax')?.checked, val('purPaidAmt'));
+    setText('purSubtotal', fmtSafe(totals.subtotal)); setText('purTaxAmt', fmtSafe(totals.tax)); setText('purTotal', fmtSafe(totals.total));
+    const row = el('purTaxRow'); if(row) row.style.display = totals.tax > 0 ? 'flex' : 'none';
+    if(el('purPaidAmt')) setVal('purPaidAmt', totals.paid);
+    return totals;
+  };
+  try { renderPurItems = window.renderPurItems; } catch (_) {}
+
+  window.savePurchase = async function(){
+    if(!asArray(purItems).length){ notify('⚠️ أضف صنفاً'); return false; }
+    const supId = val('purSupplier');
+    const supName = supId ? (asArray(suppliersData).find(s => String(s.id) === String(supId))?.name || 'مورد') : 'مورد';
+    const attachFile = el('purAttachment')?.files?.[0];
+    const readAttachment = () => new Promise((resolve, reject) => {
+      if(!attachFile) return resolve(null);
+      const reader = new FileReader();
+      reader.onload = e => resolve({ name:attachFile.name, type:attachFile.type, data:e.target.result });
+      reader.onerror = () => reject(new Error('تعذر قراءة مرفق فاتورة المشتريات'));
+      reader.readAsDataURL(attachFile);
+    });
+
+    try{
+      const attachData = await readAttachment();
+      const payType = val('purPayType') || 'cash';
+      const taxOn = !!el('purTypeTax')?.checked;
+      purItems = purItems.map(normalizePurchaseItem);
+      const totals = computePurchaseTotals(purItems, taxOn, payType === 'cash' ? 0 : val('purPaidAmt'));
+      if(totals.total <= 0){ notify('⚠️ إجمالي المشتريات يجب أن يكون أكبر من صفر'); return false; }
+      const purId = String(Date.now());
+      const payload = {
+        id:purId,
+        legacy_id:purId,
+        date:val('purDate') || today(),
+        supplier_id:supId,
+        supplier_name:supName,
+        invoice_no:val('purInvNo') || ('PUR-' + Date.now()),
+        sales_ref:val('purSalesRef') || '',
+        items:totals.items.map(x=>({...x})),
+        subtotal:totals.subtotal,
+        tax_amount:totals.tax,
+        total:totals.total,
+        has_tax:taxOn,
+        inv_type:taxOn?'tax':'normal',
+        notes:val('purNotes'),
+        attachment:attachData,
+        pay_type:payType,
+        payment_type:payType,
+        due_date:val('purDueDate') || '',
+        paid_amt: payType === 'cash' ? 0 : totals.paid,
+        paid: payType === 'cash' ? 0 : totals.paid,
+        remaining: payType === 'cash' ? totals.total : totals.remaining,
+        create_purchase_installment: payType === 'deferred'
+      };
+
+      let savedPurchase = null;
+      if(backendToken){
+        savedPurchase = await backendRequest('/purchases', { method:'POST', body: JSON.stringify(payload) });
+        purchasesData = mergeRecordsById(asArray(purchasesData), [savedPurchase]);
+        setLocalState('bq_purchases', purchasesData);
+        if(savedPurchase.purchaseInstallment){
+          purInstData = mergeRecordsById(asArray(purInstData), [savedPurchase.purchaseInstallment]);
+          setLocalState('bq_pur_inst', purInstData);
+        }
+        await refreshAfterAtomicWrite();
+      } else {
+        purchasesData.push(payload);
+        productsData = asArray(productsData).map(p => ({...p}));
+        payload.items.forEach(item => {
+          const pi = productsData.findIndex(p => String(p.id) === String(item.pid));
+          if(pi >= 0){ productsData[pi].stock_qty = Math.max(0, int(productsData[pi].stock_qty,0) + item.qty); productsData[pi].buy_price = item.cost; }
+        });
+        await save('bq_purchases', purchasesData);
+        await save('bq_products', productsData);
+        if(payload.remaining > 0 && payType === 'deferred'){
+          const inst = { id:String(Date.now()), legacy_id:String(Date.now()), pur_id:payload.id, invoice_no:payload.invoice_no, supplier_id:supId, supplier_name:supName, date:payload.date, total:payload.total, amount:payload.total, paid:payload.paid, remaining:payload.remaining, due_date:payload.due_date || '', status:'pending', closed:false, payments:[] };
+          purInstData.push(inst); await saveStateValue('bq_pur_inst', purInstData);
+        }
+      }
+      if(supId && typeof recalculateSupplierPurchaseTotals === 'function') recalculateSupplierPurchaseTotals(true);
+      purItems=[]; renderPurItems(); clearPurchaseForm(); loadPurchasesTable(); loadProductsDropdown(); if(typeof loadSuppliersTable === 'function') loadSuppliersTable(); if(typeof loadPurInstTable === 'function') loadPurInstTable();
+      const remainingText = fmtSafe(savedPurchase?.remaining ?? payload.remaining);
+      notify(payType === 'deferred' ? '✅ تم حفظ المشتريات وترحيل المتبقي (' + remainingText + ') لآجل المشتريات' : '✅ تم حفظ المشتريات وتحديث المخزون','success');
+      return true;
+    } catch(err){ console.error(err); notify('❌ فشل حفظ المشتريات: ' + err.message,'error'); return false; }
+  };
+
+  window.payInstallment = async function(id){
+    const i = asArray(installmentsData).findIndex(x => String(x.id) === String(id));
+    if(i < 0) return false;
+    const inst = installmentsData[i];
+    const due = money(Math.max(0, n(inst.amount_due ?? inst.amount, 0)));
+    const currentPaid = clamp(inst.amount_paid ?? (inst.status === 'paid' ? due : inst.paid), 0, due);
+    const remainingPart = money(Math.max(0, due - currentPaid));
+    if(remainingPart <= 0){ notify('ℹ️ هذا القسط مسدد بالفعل','info'); return false; }
+    const partialStr = prompt(`المبلغ المستحق لهذا البند: ${fmtSafe(remainingPart)}\nأدخل المبلغ المدفوع:`, remainingPart);
+    if(partialStr === null) return false;
+    const paidAmount = clamp(partialStr, 0, remainingPart);
+    if(paidAmount <= 0){ notify('⚠️ أدخل مبلغاً صحيحاً'); return false; }
+    const payDate = prompt('تاريخ الدفع:', today()) || today();
+    inst.amount_paid = money(currentPaid + paidAmount);
+    inst.paid = inst.amount_paid >= due;
+    inst.remaining = money(Math.max(0, due - inst.amount_paid));
+    inst.status = inst.remaining <= 0 ? 'paid' : 'pending';
+    inst.paid_date = inst.remaining <= 0 ? payDate : (inst.paid_date || null);
+    inst.last_payment = payDate;
+    installmentsData[i] = inst;
+    if (backendToken) { setLocalState('bq_installments', installmentsData); }
+    else { await save('bq_installments', installmentsData); }
+    const ci = asArray(customersData).findIndex(c => String(c.id) === String(inst.customer_id));
+    if(ci >= 0){
+      customersData[ci].balance_due = money(Math.max(0, n(customersData[ci].balance_due,0) - paidAmount));
+      if (backendToken) { setLocalState('bq_customers', customersData); }
+      else { await save('bq_customers', customersData); }
+    }
+    const sale = await syncSaleFromInstallments(inst.sale_id, inst.invoice_no, payDate);
+    // PUT /api/sales/:id في persistInstallmentPaymentToBackend يحدّث الفاتورة + رصيد العميل + الأقساط في قاعدة البيانات
+    await persistInstallmentPaymentToBackend(inst, sale);
+    if (backendToken) await refreshAfterAtomicWrite();
+    const snap = getInstallmentInvoiceSnapshot(inst);
+    notify(snap.remaining <= 0 ? '✅ تم سداد الفاتورة بالكامل وإغلاقها 🎉' : '✅ تم تسجيل دفع ' + fmtSafe(paidAmount) + ' — متبقي على الفاتورة: ' + fmtSafe(snap.remaining),'success');
+    loadInstallmentsTable(); return true;
+  };
+
+  window.payPurInst = async function(id){
+    const data = asArray(purInstData);
+    const idx = data.findIndex(p => String(p.id) === String(id));
+    if(idx < 0) return false;
+    const rec = data[idx];
+    const total = money(Math.max(0, n(rec.amount ?? rec.total, 0)));
+    rec.paid = clamp(rec.paid, 0, total);
+    rec.remaining = money(Math.max(0, rec.remaining ?? (total - rec.paid)));
+    rec.payments = Array.isArray(rec.payments) ? rec.payments : [];
+    if(rec.remaining <= 0){ notify('ℹ️ هذه الفاتورة مسددة بالفعل','info'); return false; }
+    const amtStr = prompt(`المتبقي للمورد: ${fmtSafe(rec.remaining)}\nأدخل المبلغ المدفوع:`, rec.remaining);
+    if(amtStr === null) return false;
+    const amt = clamp(amtStr, 0, rec.remaining);
+    if(amt <= 0){ notify('⚠️ أدخل مبلغاً صحيحاً'); return false; }
+    const payDate = prompt('تاريخ الدفع:', today()) || today();
+    rec.paid = money(rec.paid + amt); rec.remaining = money(Math.max(0, total - rec.paid)); rec.payments.push({ amt, date:payDate }); rec.status = rec.remaining <= 0 ? 'paid' : 'pending';
+    if(rec.remaining <= 0){ rec.closed = true; rec.closed_date = payDate; notify('✅ تم سداد الفاتورة للمورد بالكامل 🎉','success'); }
+    else notify('✅ تم تسجيل دفع ' + fmtSafe(amt) + ' للمورد — المتبقي: ' + fmtSafe(rec.remaining),'success');
+    const pi = asArray(purchasesData).findIndex(x => String(x.id) === String(rec.pur_id) || String(x.invoice_no||'') === String(rec.invoice_no||''));
+    if(pi >= 0){ purchasesData[pi].paid_amt = clamp(n(purchasesData[pi].paid_amt,0) + amt, 0, n(purchasesData[pi].total,0)); purchasesData[pi].paid = purchasesData[pi].paid_amt; purchasesData[pi].remaining = money(Math.max(0, n(purchasesData[pi].total,0) - purchasesData[pi].paid_amt)); purchasesData[pi].payment_confirmed = purchasesData[pi].remaining <= 0; }
+    const instDbId = rec.db_id || rec._id;
+    if(backendToken && instDbId){
+      await backendRequest('/purchase-installments/' + encodeURIComponent(instDbId), { method:'PUT', body: JSON.stringify(rec) });
+      if(pi >= 0){ const pDbId = purchasesData[pi].db_id || purchasesData[pi]._id; if(pDbId) await backendRequest('/purchases/' + encodeURIComponent(pDbId), { method:'PUT', body: JSON.stringify({ supplier_name:purchasesData[pi].supplier_name, payment_type:purchasesData[pi].payment_type||purchasesData[pi].pay_type||'deferred', paid:purchasesData[pi].paid_amt, notes:purchasesData[pi].notes||'' }) }); }
+      await refreshAfterAtomicWrite();
+    } else {
+      if(pi >= 0) await save('bq_purchases', purchasesData);
+      purInstData = data; await saveStateValue('bq_pur_inst', purInstData);
+    }
+    loadPurInstTable(); if(typeof loadPurchasesTable === 'function') loadPurchasesTable(); return true;
+  };
+
+  window.confirmPurchasePayment = async function(id){
+    const i = asArray(purchasesData).findIndex(p => String(p.id) === String(id));
+    if(i < 0) return false;
+    purchasesData[i].paid_amt = money(Math.max(0, n(purchasesData[i].total, 0)));
+    purchasesData[i].paid = purchasesData[i].paid_amt;
+    purchasesData[i].remaining = 0;
+    purchasesData[i].payment_confirmed = true;
+    purchasesData[i].confirmed_at = today();
+    if(backendToken && (purchasesData[i].db_id || purchasesData[i]._id)){
+      await backendRequest('/purchases/' + encodeURIComponent(purchasesData[i].db_id || purchasesData[i]._id), { method:'PUT', body: JSON.stringify({ supplier_name:purchasesData[i].supplier_name, payment_type:purchasesData[i].payment_type||purchasesData[i].pay_type||'cash', paid:purchasesData[i].paid_amt, notes:purchasesData[i].notes||'' }) });
+      await refreshAfterAtomicWrite();
+    } else {
+      await save('bq_purchases', purchasesData);
+      await rebuildPurchaseInstallmentFromPurchase(purchasesData[i]);
+    }
+    loadPurchasesTable(); if(typeof loadPurInstTable === 'function') loadPurInstTable();
+    notify('✅ تم تأكيد الدفع النقدي للمشتريات','success'); return true;
+  };
+
+  function saleKeySet(row){
+    return new Set([row?.id, row?._id, row?.db_id, row?.legacy_id, row?.invoice_no].map(v => String(v || '')).filter(Boolean));
+  }
+
+  function matchesSale(row, id){
+    return saleKeySet(row).has(String(id || ''));
+  }
+
+  function installmentMatchesSale(inst, sale){
+    const saleIds = saleKeySet(sale);
+    const instSaleId = String(inst?.sale_id || '');
+    const inv = String(sale?.invoice_no || '');
+    const instInv = String(inst?.invoice_no || '');
+    return (instSaleId && saleIds.has(instSaleId)) || (inv && instInv === inv) || (inv && String(inst?.notes || '').includes(inv));
+  }
+
+  function findProductForSaleItem(item){
+    const keys = [item?.pid, item?.db_product_id, item?.legacy_id, item?.code, item?.name].map(v => String(v || '')).filter(Boolean);
+    return asArray(productsData).find(p => keys.some(k => String(p.id || '') === k || String(p.db_id || '') === k || String(p._id || '') === k || String(p.legacy_id || '') === k || String(p.code || '') === k || String(p.name || '') === k));
+  }
+
+  async function deleteSaleConsistently(id, requireConfirm = true){
+    const idx = asArray(salesData).findIndex(s => matchesSale(s, id));
+    if (idx < 0) { notify('⚠️ لم يتم العثور على الفاتورة'); return false; }
+    const sale = salesData[idx];
+    if (requireConfirm && !confirm('هل تريد حذف الفاتورة؟ سيتم عكس أثرها على المخزون والعميل والأقساط.')) return false;
+    const dbId = sale.db_id || sale._id;
+    if (backendToken && dbId) {
+      await backendRequest('/sales/' + encodeURIComponent(dbId), { method:'DELETE' });
+      await refreshAfterAtomicWrite();
+      notify('✅ تم حذف الفاتورة وعكس أثرها بالكامل');
+      return true;
+    }
+
+    // حماية: البائع لا يملك نسخة كاملة من البيانات — لا يجوز الاستبدال الجماعي من جهازه
+    if (backendToken && currentUser?.role === 'seller') {
+      notify('⚠️ تعذر ربط الفاتورة بقاعدة البيانات — حدّث الصفحة وحاول مرة أخرى','error');
+      return false;
+    }
+    for (const rawItem of asArray(sale.items)) {
+      const item = normalizeInvoiceItem(rawItem);
+      if (!item.pid || item.pid === 'manual' || item.pid === 'sum') continue;
+      const product = findProductForSaleItem(item);
+      if (product) product.stock_qty = money(n(product.stock_qty, 0) + item.qty);
+    }
+
+    const linkedInstallments = asArray(installmentsData).filter(inst => installmentMatchesSale(inst, sale));
+    const outstanding = linkedInstallments.length
+      ? money(linkedInstallments.reduce((sum, inst) => sum + Math.max(0, n(inst.remaining ?? inst.amount_due, 0) - n(inst.amount_paid ?? inst.paid, 0)), 0))
+      : money(sale.remaining || 0);
+
+    if (sale.customer_id && sale.customer_id !== 'cash') {
+      const customer = asArray(customersData).find(c => String(c.id || c.db_id || c._id || c.legacy_id || '') === String(sale.customer_id));
+      if (customer) {
+        customer.total_purchases = money(Math.max(0, n(customer.total_purchases, 0) - n(sale.total, 0)));
+        customer.balance_due = money(Math.max(0, n(customer.balance_due, 0) - outstanding));
+        customer.updated_at = new Date().toISOString();
+      }
+    }
+
+    salesData.splice(idx, 1);
+    installmentsData = asArray(installmentsData).filter(inst => !installmentMatchesSale(inst, sale));
+    setLocalState('bq_sales', salesData);
+    setLocalState('bq_products', productsData);
+    setLocalState('bq_installments', installmentsData);
+    setLocalState('bq_customers', customersData);
+    await Promise.all([
+      save('bq_sales', salesData),
+      save('bq_products', productsData),
+      save('bq_installments', installmentsData),
+      save('bq_customers', customersData)
+    ]);
+    await refreshAfterAtomicWrite();
+    notify('✅ تم حذف الفاتورة وعكس أثرها بالكامل');
+    return true;
+  }
+
+  async function updateSalePaidConsistently(id, paidValue, paymentType, notesValue, customerNameValue){
+    const idx = asArray(salesData).findIndex(s => matchesSale(s, id));
+    if (idx < 0) { notify('⚠️ لم يتم العثور على الفاتورة'); return false; }
+    const sale = salesData[idx];
+    const oldRemaining = money(sale.remaining || 0);
+    const paid = clamp(paidValue, 0, sale.total || 0);
+    const remaining = money(Math.max(0, n(sale.total, 0) - paid));
+    const next = { ...sale, paid, remaining, payment_type: paymentType || sale.payment_type || 'cash', notes: notesValue ?? sale.notes ?? '', customer_name: (String(customerNameValue ?? '').trim() || sale.customer_name || 'زبون عام') };
+    const dbId = sale.db_id || sale._id;
+    if (backendToken && dbId) {
+      const saved = await backendRequest('/sales/' + encodeURIComponent(dbId), {
+        method:'PUT',
+        body: JSON.stringify({ customer_name: next.customer_name, payment_type: next.payment_type, paid: next.paid, notes: next.notes })
+      });
+      salesData = mergeRecordsById(asArray(salesData), [saved]);
+      setLocalState('bq_sales', salesData);
+      await refreshAfterAtomicWrite();
+      notify('✅ تم تحديث بيانات الفاتورة وربطها بالأقساط والعميل');
+      return true;
+    }
+
+    // حماية: البائع لا يملك نسخة كاملة من البيانات — لا يجوز الاستبدال الجماعي من جهازه
+    if (backendToken && currentUser?.role === 'seller') {
+      notify('⚠️ تعذر ربط الفاتورة بقاعدة البيانات — حدّث الصفحة وحاول مرة أخرى','error');
+      return false;
+    }
+    salesData[idx] = next;
+    if (next.customer_id && next.customer_id !== 'cash') {
+      const customer = asArray(customersData).find(c => String(c.id || c.db_id || c._id || c.legacy_id || '') === String(next.customer_id));
+      if (customer) customer.balance_due = money(Math.max(0, n(customer.balance_due, 0) + (remaining - oldRemaining)));
+    }
+    await syncSaleFromInstallments(next.id || next.legacy_id, next.invoice_no);
+    setLocalState('bq_sales', salesData);
+    setLocalState('bq_customers', customersData);
+    await Promise.all([save('bq_sales', salesData), save('bq_customers', customersData)]);
+    await refreshAfterAtomicWrite();
+    notify('✅ تم تحديث بيانات الفاتورة');
+    return true;
+  }
+
+  window.deleteSale = async function(id){
+    const ok = await deleteSaleConsistently(id, true);
+    if (ok) {
+      if (typeof loadSalesTable === 'function') loadSalesTable();
+      if (typeof loadProductsTable === 'function') loadProductsTable();
+      if (typeof loadInstallmentsTable === 'function') loadInstallmentsTable();
+    }
+  };
+
+  window.accountantDeleteInv = async function(id){
+    const ok = await deleteSaleConsistently(id, true);
+    if (ok && typeof loadAllInvoices === 'function') loadAllInvoices();
+  };
+
+  window.saveAccEditInv = async function(){
+    const id = val('accEditInvId');
+    const paymentType = val('accEditPayType') || 'cash';
+    const paid = val('accEditPaid');
+    const notesValue = val('accEditNotes');
+    const customerName = val('accEditCustomer');
+    const ok = await updateSalePaidConsistently(id, paid, paymentType, notesValue, customerName);
+    if (ok) {
+      const modal = el('accEditModal'); if (modal) modal.style.display = 'none';
+      if (typeof loadAllInvoices === 'function') loadAllInvoices();
+    }
+  };
+
+  window.svSaveEditInv = async function(){
+    const id = val('svEditInvId');
+    const paymentType = val('svEditPayType') || 'cash';
+    const paid = val('svEditPaid');
+    const notesValue = val('svEditNotes');
+    const customerName = val('svEditCustomer');
+    const ok = await updateSalePaidConsistently(id, paid, paymentType, notesValue, customerName);
+    if (ok) {
+      const modal = el('svEditModal'); if (modal) modal.style.display = 'none';
+      if (typeof svLoadSales === 'function') svLoadSales();
+    }
+  };
+
+})();
 </script>
 
 
