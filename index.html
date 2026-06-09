@@ -2367,7 +2367,9 @@ body.dark-mode .btn-reset { background:#334155 !important; color:#e2e8f0 !import
 <!-- ═══════════════════ SCRIPT ═══════════════════ -->
 <script>
 /* ── Backend API / PostgreSQL DB-first mode ── */
-const API_URL = window.API_BASE || (location.protocol === 'file:' ? 'http://localhost:5001/api' : '/api');
+const API_PROTOCOL = location.protocol === 'file:' ? 'http:' : location.protocol;
+const API_HOST = location.hostname || 'localhost';
+const API_URL = `${API_PROTOCOL}//${API_HOST}:5001/api`;
 let backendToken = localStorage.getItem('bq_backend_token') || '';
 let dbSyncTimer = null;
 let dbSyncBusy = false;
@@ -2398,7 +2400,7 @@ function backendHeaders() {
 }
 
 async function backendRequest(endpoint, options = {}) {
-  const res =  fetch(`${API_URL}${endpoint}`, {
+  const res = await fetch(`${API_URL}${endpoint}`, {
     ...options,
     headers: {
       ...backendHeaders(),
@@ -2407,7 +2409,7 @@ async function backendRequest(endpoint, options = {}) {
   });
 
   let data = {};
-  try { data =  res.json(); } catch (_) {}
+  try { data = await res.json(); } catch (_) {}
 
   if (!res.ok) {
     throw new Error(data.error || data.message || `Backend error ${res.status}`);
@@ -2515,7 +2517,7 @@ async function saveStateValue(key, value, opts = {}) {
   const runSave = async () => {
     dbSaveInProgress++;
     try {
-      const data =  backendRequest(`/state/${encodeURIComponent(key)}`, {
+      const data = await backendRequest(`/state/${encodeURIComponent(key)}`, {
         method: 'PUT',
         body: JSON.stringify({ value })
       });
@@ -2547,7 +2549,7 @@ async function saveStateValue(key, value, opts = {}) {
 async function backendLogin(user, password) {
   if (!user || !user.email) return null;
 
-  const data =  backendRequest('/auth/login', {
+  const data = await backendRequest('/auth/login', {
     method: 'POST',
     body: JSON.stringify({ email: user.email, password })
   });
@@ -2565,7 +2567,7 @@ async function loadBackendState(options = {}) {
 
   dbSyncBusy = true;
   try {
-    const data =  backendRequest('/state/all');
+    const data = await backendRequest('/state/all');
     applyBackendState(data.state || {});
     lastDbSyncAt = Date.now();
     if (refresh) scheduleUiRefresh();
@@ -2789,7 +2791,7 @@ async function getSellerSalesLive() {
   if (backendToken && currentUser?.role === 'seller') {
     try {
       // 1) المصدر الأساسي: السيرفر يحدد المستخدم من التوكن.
-      const mineRes =  backendRequest('/sales/mine');
+      const mineRes = await backendRequest('/sales/mine');
       const mineRows = Array.isArray(mineRes) ? mineRes : (mineRes.sales || []);
       if (Array.isArray(mineRows) && mineRows.length) {
         window.__lastSellerSales = mineRows;
@@ -2800,7 +2802,7 @@ async function getSellerSalesLive() {
 
       // 2) fallback قوي: هات كل الفواتير من السيرفر ثم فلترها محلياً بمفاتيح البائع.
       // ده بيحل السجلات القديمة التي كان السيرفر لا يقدر يطابق مالكها بسبب اختلاف الحقول.
-      const allRes =  backendRequest('/sales');
+      const allRes = await backendRequest('/sales');
       const allRows = Array.isArray(allRes) ? allRes : (allRes.sales || []);
       if (Array.isArray(allRows)) {
         salesData = mergeRecordsById(salesData, allRows);
@@ -2881,9 +2883,9 @@ function renderDeptCards() {
 
 async function loadLoginUsers() {
   try {
-    const res =  fetch(`${API_URL}/login-users`);
+    const res = await fetch(`${API_URL}/login-users`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data =  res.json();
+    const data = await res.json();
     const freshDepts = buildLoginDepts(data.users || []);
     // لا نستبدل القسم لو فاضي تماماً بسبب مشكلة مؤقتة، لكن لو النداء نجح نستخدمه كمرجع.
     depts = freshDepts;
@@ -2911,7 +2913,7 @@ function save(key, data){
 setTimeout(()=>{
   document.getElementById('splashScreen').classList.add('hidden');
   setTimeout(async ()=>{
-     loadLoginUsers();
+    await loadLoginUsers();
     document.getElementById('splashScreen').style.display='none';
     document.getElementById('loginScreen').classList.add('active');
   },800);
@@ -2983,8 +2985,8 @@ window.doLogin = async function(){
   if(!pw){ showLoginErr('أدخل كلمة المرور'); return; }
 
   try {
-    const loginData =  backendLogin(selectedLoginUser, pw);
-     loadBackendState({ refresh: false, silent: false });
+    const loginData = await backendLogin(selectedLoginUser, pw);
+    await loadBackendState({ refresh: false, silent: false });
     if(typeof applyThemeMode === 'function') applyThemeMode(settingsData.themeMode || 'light');
     startDatabaseLiveSync();
     currentUser = { ...selectedLoginUser, ...(loginData.user || {}) };
@@ -2996,7 +2998,7 @@ window.doLogin = async function(){
         ? 'هذا المستخدم موقوف من لوحة التحكم'
         : 'تعذر الاتصال بالباك إند: ' + e.message;
     showLoginErr(msg);
-     loadLoginUsers();
+    await loadLoginUsers();
     return;
   }
 
@@ -3110,7 +3112,7 @@ function applySellerPermissions() {
 window.showPage = async function(name,el){
   if(!canOpenModule(name)) { showMessage('⛔ ليس لديك صلاحية فتح هذا القسم','error'); return; }
   // كل صفحة/خدمة تسحب آخر نسخة من السيرفر بالتوكن قبل العرض.
-  if (backendToken)  loadBackendState({ refresh: false, silent: true });
+  if (backendToken) await loadBackendState({ refresh: false, silent: true });
   document.querySelectorAll('.page-section').forEach(s=>s.classList.remove('active'));
   document.getElementById(name+'-page').classList.add('active');
   document.querySelectorAll('.menu-item').forEach(m=>m.classList.remove('active'));
@@ -3229,7 +3231,7 @@ window.saveProduct=async function(){
   const qty=parseInt(document.getElementById('pQty').value)||0;
   if(qty<0){ showMessage('⚠️ كمية المنتج يجب أن تكون أكبر من أو تساوي 0','warning'); return; }
   const p={id:Date.now()+'',code,name,category:document.getElementById('pCat').value,buy_price:parseFloat(document.getElementById('pBuyPrice').value)||0,sell_price:parseFloat(document.getElementById('pSellPrice').value)||0,stock_qty:qty,notes:document.getElementById('pNotes').value,created_at:today()};
-  productsData.push(p);  save('bq_products',productsData);
+  productsData.push(p); await save('bq_products',productsData);
   loadProductsTable(); loadProductsDropdown(); clearProductForm();
   showMessage('✅ تم حفظ المنتج بنجاح');
 };
@@ -3253,7 +3255,7 @@ function loadProductsTable(){
 }
 window.deleteProduct=async function(id){
   if(!confirm('حذف المنتج؟')) return;
-  productsData=productsData.filter(p=>p.id!==id);  save('bq_products',productsData);
+  productsData=productsData.filter(p=>p.id!==id); await save('bq_products',productsData);
   loadProductsTable(); loadProductsDropdown(); showMessage('✅ تم الحذف');
 };
 function loadProductsDropdown(){
@@ -3267,7 +3269,7 @@ window.saveCustomer=async function(){
   const name=document.getElementById('cName').value.trim();
   if(!name){ showMessage('⚠️ أدخل اسم العميل','warning'); return; }
   const c={id:Date.now()+'',name,phone:document.getElementById('cPhone').value,type:document.getElementById('cType').value,address:document.getElementById('cAddress').value,notes:document.getElementById('cNotes').value,balance_due:0,total_purchases:0,created_at:today()};
-  customersData.push(c);  save('bq_customers',customersData);
+  customersData.push(c); await save('bq_customers',customersData);
   loadCustomersTable(); loadCustomersDropdown(); clearCustomerForm();
   showMessage('✅ تم حفظ العميل');
 };
@@ -3288,7 +3290,7 @@ function loadCustomersTable(){
 }
 window.deleteCustomer=async function(id){
   if(!confirm('حذف العميل؟')) return;
-  customersData=customersData.filter(c=>c.id!==id);  save('bq_customers',customersData);
+  customersData=customersData.filter(c=>c.id!==id); await save('bq_customers',customersData);
   loadCustomersTable(); loadCustomersDropdown(); showMessage('✅ تم الحذف');
 };
 function loadCustomersDropdown(){
@@ -3414,16 +3416,16 @@ window.saveSale=async function(){
   const custName=custId==='cash'||!custId?'عميل نقدي':customersData.find(c=>c.id===custId)?.name||'عميل';
   const invNo='INV-'+String(invCounter).padStart(4,'0');
   const sale={id:Date.now()+'',invoice_no:invNo,date:document.getElementById('invDate').value,customer_id:custId,customer_name:custName,user_name:currentUser.name,seller_name:currentUser.name,seller_email:currentUser.email,createdBy:currentUser.email,items:[...invItems],subtotal:sub,tax_amount:tax,discount:disc,total,paid,remaining:rem,payment_type:document.getElementById('invPayType').value,notes:document.getElementById('invNotes').value,inv_type:tax>0?'tax':'normal'};
-  invCounter++;  saveStateValue('bq_inv_counter', invCounter);
-  salesData.push(sale);  save('bq_sales',salesData);
+  invCounter++; await saveStateValue('bq_inv_counter', invCounter);
+  salesData.push(sale); await save('bq_sales',salesData);
   // Update customer balance
   if(custId!=='cash'&&custId){
     const ci=customersData.findIndex(c=>c.id===custId);
-    if(ci>=0){ customersData[ci].balance_due+=rem; customersData[ci].total_purchases+=total;  save('bq_customers',customersData); }
+    if(ci>=0){ customersData[ci].balance_due+=rem; customersData[ci].total_purchases+=total; await save('bq_customers',customersData); }
   }
   // Update stock
   invItems.forEach(item=>{ const pi=productsData.findIndex(p=>p.id===item.pid); if(pi>=0){ productsData[pi].stock_qty=Math.max(0,(productsData[pi].stock_qty||0)-item.qty); } });
-   save('bq_products',productsData);
+  await save('bq_products',productsData);
   // أي فاتورة مبيعات بها مبلغ متبقٍ تظهر في صفحة الأقساط والآجل حتى يتم السداد
   if(rem>0){
     if(sale.payment_type==='installment'){
@@ -3437,7 +3439,7 @@ window.saveSale=async function(){
       const dd=new Date(sale.date); dd.setMonth(dd.getMonth()+1);
       installmentsData.push({id:Date.now()+'',sale_id:sale.id,invoice_no:invNo,customer_id:custId,customer_name:custName,seller_name:currentUser.name,seller_email:currentUser.email,createdBy:currentUser.email,invoice_total:total,invoice_paid:paid,invoice_remaining:rem,amount_due:rem,amount_paid:0,due_date:dd.toISOString().split('T')[0],paid:false});
     }
-     save('bq_installments',installmentsData);
+    await save('bq_installments',installmentsData);
   }
   showInvoicePreview(sale);
   clearInvoice();
@@ -3512,7 +3514,7 @@ window.deleteSale=async function(id){
   if(sale){
     // إعادة المخزون المباع
     (sale.items||[]).forEach(item=>{ const pi=productsData.findIndex(p=>p.id===item.pid); if(pi>=0){ productsData[pi].stock_qty+=(item.qty||0); } });
-     save('bq_products',productsData);
+    await save('bq_products',productsData);
     // عكس رصيد العميل: نخصم المتبقي الفعلي للفاتورة (مجموع أقساطها غير المدفوعة أو المتبقي)
     if(sale.customer_id && sale.customer_id!=='cash'){
       const ci=customersData.findIndex(c=>c.id===sale.customer_id);
@@ -3523,12 +3525,12 @@ window.deleteSale=async function(id){
           : (sale.remaining||0);
         customersData[ci].balance_due=Math.max(0,(customersData[ci].balance_due||0)-outstanding);
         customersData[ci].total_purchases=Math.max(0,(customersData[ci].total_purchases||0)-(sale.total||0));
-         save('bq_customers',customersData);
+        await save('bq_customers',customersData);
       }
     }
     // حذف الأقساط المرتبطة بالفاتورة
     if(Array.isArray(installmentsData) && installmentsData.some(x=>x.sale_id===id)){
-      installmentsData=installmentsData.filter(x=>x.sale_id!==id);  save('bq_installments',installmentsData);
+      installmentsData=installmentsData.filter(x=>x.sale_id!==id); await save('bq_installments',installmentsData);
     }
   }
   salesData=salesData.filter(s=>s.id!==id); save('bq_sales',salesData);
@@ -3763,8 +3765,8 @@ window.savePurchase=async function(){
     const grandTotal=purSub+purTaxAmt;
     const paidNow=purPayType==='cash'?0:Math.min(purPaidAmt,grandTotal);
     const pur={id:purId,date:document.getElementById('purDate').value,supplier_id:supId,supplier_name:supName,invoice_no:document.getElementById('purInvNo').value,sales_ref:document.getElementById('purSalesRef')?.value||'',items:finalizedItems,subtotal:purSub,tax_amount:purTaxAmt,total:grandTotal,has_tax:purTaxOn,inv_type:purTaxOn?'tax':'normal',notes:document.getElementById('purNotes').value,attachment:attachData,pay_type:purPayType,payment_type:purPayType,due_date:purDueDate,paid_amt:paidNow,paid:paidNow,payment_confirmed:purPayType!=='cash'};
-    purchasesData.push(pur);  save('bq_purchases',purchasesData);
-     save('bq_products',productsData);
+    purchasesData.push(pur); await save('bq_purchases',purchasesData);
+    await save('bq_products',productsData);
     if(supId){ recalculateSupplierPurchaseTotals(true); }
     // ترحيل المتبقي لآجل المشتريات
     const purRemaining = grandTotal - pur.paid_amt;
@@ -3783,7 +3785,7 @@ window.savePurchase=async function(){
         closed:false,
         payments:[]
       });
-       saveStateValue('bq_pur_inst', purInstData);
+      await saveStateValue('bq_pur_inst', purInstData);
       showMessage('✅ تم حفظ المشتريات وترحيل المتبقي ('+fmt(purRemaining)+') لآجل المشتريات'+(attachData?' مع الفاتورة المرفقة':''));
     } else if(pur.pay_type==='cash') {
       showMessage('✅ تم حفظ المشتريات. أكّد الدفع من سجل المشتريات لتسجيل السداد النقدي');
@@ -3796,11 +3798,11 @@ window.savePurchase=async function(){
   try{
     if(attachFile){
       const reader=new FileReader();
-      reader.onload=async e=>{ try{  savePurchaseWithAttach({name:attachFile.name,type:attachFile.type,data:e.target.result}); }catch(err){ showMessage('❌ '+err.message,'error'); } };
+      reader.onload=async e=>{ try{ await savePurchaseWithAttach({name:attachFile.name,type:attachFile.type,data:e.target.result}); }catch(err){ showMessage('❌ '+err.message,'error'); } };
       reader.readAsDataURL(attachFile);
       return;
     }
-     savePurchaseWithAttach(null);
+    await savePurchaseWithAttach(null);
   } catch(err){ showMessage('❌ '+err.message,'error'); }
 };
 window.clearPurchaseForm=function(){ ['purInvNo','purNotes'].forEach(id=>document.getElementById(id).value=''); const sf=document.getElementById('purSalesRef'); if(sf) sf.value=''; const af=document.getElementById('purAttachment'); if(af) af.value=''; const pt=document.getElementById('purPayType'); if(pt) pt.value='cash'; const dd=document.getElementById('purDueDate'); if(dd) dd.value=''; const pa=document.getElementById('purPaidAmt'); if(pa) pa.value='0'; document.getElementById('purDeferredGroup').style.display='none'; document.getElementById('purPaidGroup').style.display='none'; const tt=document.getElementById('purTypeTax'); if(tt) tt.checked=true; purToggleTax(); document.getElementById('purDate').value=today(); purItems=[]; renderPurItems(); };
@@ -3838,7 +3840,7 @@ window.deletePurchase=async function(id){
   if(pur){
     // خصم المخزون الذي كانت الفاتورة قد أضافته
     (pur.items||[]).forEach(item=>{ const pi=productsData.findIndex(p=>p.id===item.pid); if(pi>=0){ productsData[pi].stock_qty=Math.max(0,(productsData[pi].stock_qty||0)-(item.qty||0)); } });
-     save('bq_products',productsData);
+    await save('bq_products',productsData);
     // إعادة احتساب إجمالي مشتريات المورد من فواتير الشراء بعد الحذف
     if(pur.supplier_id){
       // سيتم الحذف من purchasesData بعد قليل، لذلك نحسب بدون الفاتورة الحالية مؤقتًا
@@ -3852,7 +3854,7 @@ window.deletePurchase=async function(id){
       purInstData=purInstData.filter(x=>x.pur_id!==id); saveStateValue('bq_pur_inst',purInstData);
     }
   }
-  purchasesData=purchasesData.filter(p=>p.id!==id);  save('bq_purchases',purchasesData);
+  purchasesData=purchasesData.filter(p=>p.id!==id); await save('bq_purchases',purchasesData);
   loadPurchasesTable(); if(typeof loadPurInstTable==='function') loadPurInstTable(); if(typeof loadSuppliersTable==='function') loadSuppliersTable(); refreshDashboard(); showMessage('✅ تم حذف فاتورة الشراء وتعديل المخزون والمورد');
 };
 
@@ -4035,9 +4037,9 @@ window.payInstallment=async function(id){
   inst.paid_date = inst.paid ? payDate : (inst.paid_date||null);
   inst.last_payment = payDate;
   installmentsData[i]=inst;
-   save('bq_installments',installmentsData);
+  await save('bq_installments',installmentsData);
   const ci=customersData.findIndex(c=>String(c.id)===String(inst.customer_id));
-  if(ci>=0){ customersData[ci].balance_due=Math.max(0,(Number(customersData[ci].balance_due)||0)-paid);  save('bq_customers',customersData); }
+  if(ci>=0){ customersData[ci].balance_due=Math.max(0,(Number(customersData[ci].balance_due)||0)-paid); await save('bq_customers',customersData); }
   const sale = syncSaleFromInstallments(inst.sale_id, inst.invoice_no, payDate);
   const snap = getInstallmentInvoiceSnapshot(inst);
   showMessage(snap.remaining<=0 ? '✅ تم سداد الفاتورة بالكامل وإغلاقها 🎉' : '✅ تم تسجيل دفع '+fmt(paid)+' — متبقي على الفاتورة: '+fmt(snap.remaining));
@@ -4389,13 +4391,13 @@ window.svSaveSummaryInvoice = async function(){
     notes:document.getElementById('svInvNotes').value,
     inv_type:'summary'
   };
-  invCounter++;  saveStateValue('bq_inv_counter', invCounter);
-  salesData.push(sale);  save('bq_sales',salesData);
+  invCounter++; await saveStateValue('bq_inv_counter', invCounter);
+  salesData.push(sale); await save('bq_sales',salesData);
   // ترحيل للأقساط لو في متبقي
   if(rem>0){
     const dueDate=new Date(sale.date); dueDate.setMonth(dueDate.getMonth()+1);
     installmentsData.push({id:Date.now()+'',sale_id:sale.id,invoice_no:invNo,customer_id:'cash',customer_name:custName,seller_name:currentUser.name,seller_email:currentUser.email,createdBy:currentUser.email,invoice_total:total,invoice_paid:paid,invoice_remaining:rem,amount_due:rem,amount_paid:0,due_date:dueDate.toISOString().split('T')[0],paid:false});
-     save('bq_installments',installmentsData);
+    await save('bq_installments',installmentsData);
   }
   // عرض preview
   document.getElementById('svPreviewTitle').textContent='فاتورة مجملة';
@@ -4578,7 +4580,7 @@ window.qtPreview = async function(){
   document.getElementById('qtPreviewNotes').innerHTML   = notes?`<strong>ملاحظات وشروط:</strong><br>${notes}`:'';
   document.getElementById('qtPreviewDiv').style.display = 'block';
   // حفظ رقم العرض
-  qtCounter++;  saveStateValue('bq_qt_counter', qtCounter);
+  qtCounter++; await saveStateValue('bq_qt_counter', qtCounter);
 };
 
 window.qtClear = function(){
@@ -4685,7 +4687,7 @@ async function syncPurchaseInstallmentAfterPayment(purId, amount, payDate=today(
   if(applied>0) rec.payments.push({amt:applied, date:payDate});
   if(rec.remaining<=0){ rec.closed=true; rec.closed_date=payDate; }
   purInstData[idx]=rec;
-   saveStateValue('bq_pur_inst', purInstData);
+  await saveStateValue('bq_pur_inst', purInstData);
 }
 async function rebuildPurchaseInstallmentFromPurchase(pur){
   if(!pur || pur.pay_type!=='deferred') return;
@@ -4710,7 +4712,7 @@ async function rebuildPurchaseInstallmentFromPurchase(pur){
     payments:idx>=0&&Array.isArray(purInstData[idx].payments)?purInstData[idx].payments:[]
   };
   if(idx>=0) purInstData[idx]={...purInstData[idx],...base}; else purInstData.push(base);
-   saveStateValue('bq_pur_inst', purInstData);
+  await saveStateValue('bq_pur_inst', purInstData);
 }
 
 // ══════════════════════════════════════
@@ -4786,10 +4788,10 @@ window.payPurInst = async function(id){
     purchasesData[pi].paid_amt=Math.min((Number(purchasesData[pi].paid_amt)||0)+amt, Number(purchasesData[pi].total)||0);
     purchasesData[pi].paid=purchasesData[pi].paid_amt;
     if(purchasesData[pi].paid_amt >= (Number(purchasesData[pi].total)||0)) purchasesData[pi].payment_confirmed=true;
-     save('bq_purchases',purchasesData);
+    await save('bq_purchases',purchasesData);
   }
   purInstData=data;
-   saveStateValue('bq_pur_inst', purInstData);
+  await saveStateValue('bq_pur_inst', purInstData);
   loadPurInstTable();
   if(typeof loadPurchasesTable==='function') loadPurchasesTable();
 };
@@ -4819,7 +4821,7 @@ window.payPurchase = async function(id){
   if(i<0) return;
   const p = purchasesData[i];
   const rem = Math.max(0,(Number(p.total)||0)-(Number(p.paid_amt)||0));
-  if(rem<=0){ showMessage('ℹ️ هذه الفاتورة مسددة بالفعل','info');  rebuildPurchaseInstallmentFromPurchase(p); return; }
+  if(rem<=0){ showMessage('ℹ️ هذه الفاتورة مسددة بالفعل','info'); await rebuildPurchaseInstallmentFromPurchase(p); return; }
   const amtStr = prompt(`المتبقي للمورد: ${fmt(rem)}
 أدخل المبلغ المدفوع:`, rem);
   if(amtStr===null) return;
@@ -4836,7 +4838,7 @@ window.payPurchase = async function(id){
     showMessage('✅ تم تسجيل دفع '+fmt(amt)+' للمورد');
   }
   save('bq_purchases', purchasesData);
-   syncPurchaseInstallmentAfterPayment(id, amt, payDate);
+  await syncPurchaseInstallmentAfterPayment(id, amt, payDate);
   loadPurchasesTable();
   if(typeof loadPurInstTable==='function') loadPurInstTable();
 };
@@ -4848,12 +4850,12 @@ window.confirmPurchasePayment = async function(id){
   purchasesData[i].paid=purchasesData[i].paid_amt;
   purchasesData[i].payment_confirmed=true;
   purchasesData[i].confirmed_at=today();
-   save('bq_purchases',purchasesData);
+  await save('bq_purchases',purchasesData);
   loadPurchasesTable();
   showMessage('✅ تم تأكيد الدفع النقدي للمشتريات');
 };
 
-window.editPurchase = function(id){
+window.editPurchase = async function(id){
   const pi=purchasesData.findIndex(p=>String(p.id)===String(id));
   if(pi<0) return;
   const pur=purchasesData[pi];
@@ -4890,10 +4892,10 @@ window.editPurchase = function(id){
   pur.updated_at=today();
   purchasesData[pi]=pur;
   if(pur.supplier_id){ recalculateSupplierPurchaseTotals(true); }
-   save('bq_products',productsData);
-   save('bq_purchases',purchasesData);
+  await save('bq_products',productsData);
+  await save('bq_purchases',purchasesData);
   save('bq_suppliers',suppliersData);
-   rebuildPurchaseInstallmentFromPurchase(pur);
+  await rebuildPurchaseInstallmentFromPurchase(pur);
   loadPurchasesTable(); loadProductsDropdown(); if(typeof loadPurInstTable==='function') loadPurInstTable(); if(typeof loadSuppliersTable==='function') loadSuppliersTable();
   showMessage('✅ تم تعديل المشتريات وتطبيق الأثر الرجعي على المنتج وآجل المشتريات');
 };
@@ -5706,12 +5708,12 @@ let svItems = [];
 window.showSellerTab = async function(tab, el) {
   if(tab !== 'home' && !getAllowedSellerTabs().includes(tab)) { showMessage('⛔ ليس لديك صلاحية فتح هذا القسم','error'); return; }
   // واجهة البائع تسحب آخر بيانات من السيرفر بالتوكن قبل عرض الخدمة.
-  if (backendToken)  loadBackendState({ refresh: false, silent: true });
+  if (backendToken) await loadBackendState({ refresh: false, silent: true });
   if (typeof svLoadProductsDropdown === 'function') svLoadProductsDropdown();
   document.querySelectorAll('.seller-page').forEach(p=>p.classList.remove('active'));
   document.getElementById('sv-'+tab).classList.add('active');
-  if(tab==='sales')         svLoadSales();
-  if(tab==='installments')  svLoadInstallments();
+  if(tab==='sales')        await svLoadSales();
+  if(tab==='installments') await svLoadInstallments();
 };
 
 function svLoadCustomersDropdown(){
@@ -5778,7 +5780,7 @@ window.svSaveSale=async function(){
 
   // فاتورة مجملة — مسار مختلف
   if(invType==='summary'){
-    return  svSaveSummaryInvoice();
+    return await svSaveSummaryInvoice();
   }
 
   if(!svItems.length){ showMessage('⚠️ أضف منتجاً على الأقل','warning'); return; }
@@ -5794,16 +5796,16 @@ window.svSaveSale=async function(){
   const custId='cash';
   const invNo='INV-'+String(invCounter).padStart(4,'0');
   const sale={id:Date.now()+'',invoice_no:invNo,date:document.getElementById('svInvDate').value,customer_id:custId,customer_name:custName,user_name:currentUser.name,seller_name:currentUser.name,seller_email:currentUser.email,createdBy:currentUser.email,items:[...svItems],subtotal:sub,tax_amount:tax,discount:disc,total,paid,remaining:rem,payment_type:document.getElementById('svInvPayType').value,notes:document.getElementById('svInvNotes').value,inv_type:invType};
-  invCounter++;  saveStateValue('bq_inv_counter', invCounter);
-  salesData.push(sale);  save('bq_sales',salesData);
+  invCounter++; await saveStateValue('bq_inv_counter', invCounter);
+  salesData.push(sale); await save('bq_sales',salesData);
   // تحديث رصيد العميل
   if(custId!=='cash'&&custId){
     const ci=customersData.findIndex(c=>c.id===custId);
-    if(ci>=0){ customersData[ci].balance_due+=rem; customersData[ci].total_purchases+=total;  save('bq_customers',customersData); }
+    if(ci>=0){ customersData[ci].balance_due+=rem; customersData[ci].total_purchases+=total; await save('bq_customers',customersData); }
   }
   // تحديث المخزون
   svItems.forEach(item=>{ const pi=productsData.findIndex(p=>p.id===item.pid); if(pi>=0){ productsData[pi].stock_qty=Math.max(0,(productsData[pi].stock_qty||0)-item.qty); } });
-   save('bq_products',productsData);
+  await save('bq_products',productsData);
   // ترحيل تلقائي للأقساط/الآجل لما يكون متبقي
   if(rem>0){
     if(sale.payment_type==='installment'){
@@ -5833,7 +5835,7 @@ window.svSaveSale=async function(){
         paid:false
       });
     }
-     save('bq_installments',installmentsData);
+    await save('bq_installments',installmentsData);
   }
   // عرض الفاتورة
   document.getElementById('svPreviewTitle').textContent = invType==='tax'?'فاتورة ضريبية':invType==='summary'?'فاتورة مجملة':'فاتورة بيع';
@@ -5863,7 +5865,7 @@ window.svSaveSale=async function(){
   return true;
 };
 window.svSavePrint=async function(){
-  const ok =  svSaveSale();
+  const ok = await svSaveSale();
   if(ok) printInvoiceOnly('svInvoicePreview');
 };
 window.svClearInvoice=function(){
@@ -5878,7 +5880,7 @@ window.svClearInvoice=function(){
   document.getElementById('svTaxStatus').textContent='غير مفعّل';
 };
 async function svLoadSales(){
-  const mySales= getSellerSalesLive();
+  const mySales=await getSellerSalesLive();
   document.getElementById('svSalesTotal').textContent=fmt(mySales.reduce((s,v)=>s+(Number(v.total)||0),0));
   document.getElementById('svSalesCount').textContent=fmtNum(mySales.length);
   document.getElementById('svSalesDebt').textContent=fmt(mySales.reduce((s,v)=>s+(Number(v.remaining)||0),0));
@@ -5924,7 +5926,7 @@ async function svLoadInstallments(){
   let data = [];
   if (backendToken && currentUser?.role === 'seller') {
     try {
-      const res =  backendRequest('/installments/mine');
+      const res = await backendRequest('/installments/mine');
       data = Array.isArray(res) ? res : (res.installments || []);
       installmentsData = mergeRecordsById(installmentsData, data);
       setLocalState('bq_installments', installmentsData);
@@ -5977,19 +5979,19 @@ window.svPayInst=async function(id){
   installmentsData[i].paid=installmentsData[i].amount_paid>=due;
   installmentsData[i].paid_date=installmentsData[i].paid?payDate:(installmentsData[i].paid_date||null);
   installmentsData[i].last_payment=payDate;
-   save('bq_installments',installmentsData);
+  await save('bq_installments',installmentsData);
   const ci=customersData.findIndex(c=>String(c.id)===String(installmentsData[i].customer_id));
-  if(ci>=0){ customersData[ci].balance_due=Math.max(0,(Number(customersData[ci].balance_due)||0)-amt);  save('bq_customers',customersData); }
+  if(ci>=0){ customersData[ci].balance_due=Math.max(0,(Number(customersData[ci].balance_due)||0)-amt); await save('bq_customers',customersData); }
   syncSaleFromInstallments(installmentsData[i].sale_id, installmentsData[i].invoice_no, payDate);
   svLoadInstallments(); showMessage('✅ تم تسجيل الدفع');
 };
 </script>
 
 
-<!-- BQ Activity Tracker V9 -->
+<!-- BQ Activity Tracker V9: paste before </body> in frontend-updated.html -->
 <script>
 (function(){
-  const API_BASE = window.API_BASE || (location.protocol === 'file:' ? 'http://localhost:5001/api' : '/api');
+  const API_BASE = window.API_BASE || 'http://localhost:5001/api';
   function getBQToken(){ return localStorage.getItem('bq_backend_token') || localStorage.getItem('token') || localStorage.getItem('authToken') || localStorage.getItem('bq_token') || ''; }
   function currentUserEmail(){
     try {
