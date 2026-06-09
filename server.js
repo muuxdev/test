@@ -56,7 +56,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 5001;
+
+// Render يعمل خلف Reverse Proxy.
+// هذا السطر ضروري حتى express-rate-limit لا يرمي خطأ X-Forwarded-For.
+app.set('trust proxy', 1);
+
+const PORT = process.env.PORT || 5001;const PORT = process.env.PORT || 5001;
 const JWT_SECRET = process.env.JWT_SECRET;
 
 // ═══════════════════════════════════════
@@ -104,21 +109,40 @@ async function testDatabaseConnection() {
 }
 
 // Middleware
+const allowedOrigins = [
+  'https://test-dxen.onrender.com',
+  ...(process.env.ALLOWED_ORIGIN || '')
+    .split(',')
+    .map(origin => origin.trim().replace(/\/$/, ''))
+    .filter(Boolean)
+];
+
 const corsOptions = {
   origin(origin, callback) {
-    if (!origin || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+    if (!origin) return callback(null, true);
+
+    const normalizedOrigin = String(origin).trim().replace(/\/$/, '');
+
+    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(normalizedOrigin)) {
       return callback(null, true);
     }
-    if (process.env.ALLOWED_ORIGIN && origin === process.env.ALLOWED_ORIGIN) {
+
+    if (allowedOrigins.includes(normalizedOrigin)) {
       return callback(null, true);
     }
+
     return callback(new Error(`CORS blocked origin: ${origin}`));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-BQ-Source',
+    'X-BQ-Page',
+    'X-User-Email'
+  ]
 };
-
 // ═══════════════════════════════════════
 // Rate Limiting Configuration
 // ═══════════════════════════════════════
@@ -158,11 +182,22 @@ app.use(helmet({
       scriptSrc: ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net'],
       scriptSrcElem: ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net'],
       scriptSrcAttr: ["'unsafe-inline'"],
-      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+styleSrc: [
+  "'self'",
+  "'unsafe-inline'",
+  'https://fonts.googleapis.com',
+  'https://p.typekit.net',
+  'https://*.typekit.net'
+],
       imgSrc: ["'self'", 'data:', 'https:'],
       fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
-      connectSrc: ["'self'", 'http://localhost:*', 'http://127.0.0.1:*'],
-      objectSrc: ["'none'"],
+connectSrc: [
+  "'self'",
+  'http://localhost:*',
+  'http://127.0.0.1:*',
+  'https://cdn.jsdelivr.net',
+  'https://*.jsdelivr.net'
+],      objectSrc: ["'none'"],
       baseUri: ["'self'"],
       frameAncestors: ["'self'"]
     }
@@ -4031,8 +4066,7 @@ async function start() {
 
 ✅ الخادم يعمل على: http://localhost:${PORT}
 ✅ API Base: http://localhost:${PORT}/api
-✅ الواجهة الرئيسية: http://localhost:${PORT}/frontend-updated.html
-✅ لوحة التحكم: http://localhost:${PORT}/admin
+✅ الواجهة الرئيسية: http://localhost:${PORT}/index.html✅ لوحة التحكم: http://localhost:${PORT}/admin
 ✅ قاعدة البيانات: PostgreSQL
 ✅ بيئة التشغيل: ${process.env.NODE_ENV || 'development'}
 ✅ الأمان: Helmet + Rate Limiting + CORS
