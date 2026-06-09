@@ -823,11 +823,19 @@ function rowPurchase(row) {
     supplier_name: row.supplier_name || raw.supplier_name || 'مورد عام',
     items: row.items || raw.items || [],
     subtotal: Number(raw.subtotal ?? total),
+    tax_amount: Number(raw.tax_amount || 0),
+    has_tax: Boolean(raw.has_tax || Number(raw.tax_amount || 0) > 0),
+    inv_type: raw.inv_type || (Number(raw.tax_amount || 0) > 0 ? 'tax' : 'normal'),
     total,
-    payment_type: row.payment_type || raw.payment_type || 'cash',
+    payment_type: row.payment_type || raw.payment_type || raw.pay_type || 'cash',
+    pay_type: row.payment_type || raw.pay_type || raw.payment_type || 'cash',
     paid,
     paid_amt: paid,
     remaining: Number(row.remaining ?? raw.remaining ?? (total - paid)),
+    due_date: raw.due_date || raw.dueDate || null,
+    payment_confirmed: Boolean(raw.payment_confirmed || Number(row.remaining ?? raw.remaining ?? (total - paid)) <= 0),
+    attachment: raw.attachment || null,
+    sales_ref: raw.sales_ref || '',
     notes: row.notes || raw.notes || '',
     date: row.date || raw.date,
     createdBy: row.created_by || raw.createdBy || raw.created_by || '',
@@ -858,20 +866,25 @@ function rowEmployee(row) {
 }
 
 function rowCustomer(row) {
-  return {
+  const raw = rowRaw(row);
+  return mergeRowData(row, {
     _id: String(row.id),
-    id: String(row.id),
-    legacy_id: row.legacy_id || null,
-    name: row.name || '',
-    phone: row.phone || '',
-    email: row.email || '',
-    address: row.address || '',
-    notes: row.notes || '',
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    createdBy: row.created_by,
-    updatedBy: row.updated_by
-  };
+    id: String(raw.id || row.legacy_id || row.id),
+    db_id: String(row.id),
+    legacy_id: row.legacy_id || raw.legacy_id || null,
+    name: row.name || raw.name || raw.customer_name || '',
+    phone: row.phone || raw.phone || '',
+    email: row.email || raw.email || '',
+    type: raw.type || raw.customer_type || 'cash',
+    address: row.address || raw.address || '',
+    balance_due: money(raw.balance_due || raw.balanceDue || 0),
+    total_purchases: money(raw.total_purchases || raw.totalPurchases || 0),
+    notes: row.notes || raw.notes || '',
+    createdAt: row.created_at || raw.createdAt || null,
+    updatedAt: row.updated_at || raw.updatedAt || null,
+    createdBy: row.created_by || raw.createdBy || raw.created_by || '',
+    updatedBy: row.updated_by || raw.updatedBy || raw.updated_by || ''
+  });
 }
 
 function rowSupplier(row) {
@@ -917,8 +930,8 @@ function rowExpense(row) {
 
 function rowInstallment(row) {
   const raw = rowRaw(row);
-  const amount = Number(row.amount || raw.amount_due || raw.amount || 0);
-  const paid = Number(row.paid || raw.amount_paid || raw.paid || 0);
+  const amount = Number(row.amount ?? raw.amount_due ?? raw.amount ?? 0);
+  const paid = Math.min(amount, Math.max(0, Number(row.paid ?? raw.amount_paid ?? (raw.paid === true ? amount : raw.paid) ?? 0)));
   return mergeRowData(row, {
     _id: String(row.id),
     id: String(raw.id || row.legacy_id || row.id),
@@ -934,7 +947,7 @@ function rowInstallment(row) {
     amount,
     amount_paid: paid,
     paid,
-    remaining: Number(row.remaining ?? raw.remaining ?? (amount - paid)),
+    remaining: Math.max(0, Number(row.remaining ?? raw.remaining ?? (amount - paid))),
     due_date: row.due_date || raw.due_date,
     status: row.status || raw.status || 'pending',
     notes: row.notes || raw.notes || '',
@@ -969,20 +982,31 @@ function rowLeave(row) {
 }
 
 function rowPurchaseInstallment(row) {
-  return {
+  const raw = rowRaw(row);
+  const amount = Number(row.amount ?? raw.amount ?? raw.total ?? 0);
+  const paid = Number(row.paid ?? raw.paid ?? 0);
+  const remaining = Math.max(0, Number(row.remaining ?? raw.remaining ?? (amount - paid)));
+  return mergeRowData(row, {
     _id: String(row.id),
-    id: String(row.id),
-    legacy_id: row.legacy_id || null,
-    supplier_name: row.supplier_name || '',
-    amount: Number(row.amount || 0),
-    paid: Number(row.paid || 0),
-    remaining: Number(row.remaining || 0),
-    due_date: row.due_date,
-    status: row.status || 'pending',
-    notes: row.notes || '',
-    createdBy: row.created_by,
-    updatedAt: row.updated_at
-  };
+    id: String(raw.id || row.legacy_id || row.id),
+    db_id: String(row.id),
+    legacy_id: row.legacy_id || raw.legacy_id || null,
+    pur_id: raw.pur_id || '',
+    invoice_no: raw.invoice_no || '',
+    supplier_id: raw.supplier_id || '',
+    supplier_name: row.supplier_name || raw.supplier_name || '',
+    amount,
+    total: amount,
+    paid,
+    remaining,
+    due_date: row.due_date || raw.due_date,
+    status: remaining <= 0 ? 'paid' : (row.status || raw.status || 'pending'),
+    closed: remaining <= 0 || raw.closed === true,
+    payments: Array.isArray(raw.payments) ? raw.payments : [],
+    notes: row.notes || raw.notes || '',
+    createdBy: row.created_by || raw.createdBy || raw.created_by || '',
+    updatedAt: row.updated_at || raw.updatedAt || null
+  });
 }
 
 function rowCounter(row, fallback = 1) {
@@ -2684,13 +2708,14 @@ async function replaceTableBackedSection(key, value, userEmail) {
       for (const row of value) {
         if (!row || typeof row !== 'object') continue;
         const items = Array.isArray(row.items) ? row.items : [];
-        const total = Number(row.total || 0);
-        const paid = Number(row.paid || 0);
+        const normalized = normalizeSalePayload(row);
+        const total = normalized.total;
+        const paid = normalized.paid;
         await insertWithOptionalId(
           client,
           'sales',
           ['legacy_id', 'invoice_no', 'customer_name', 'items', 'total', 'payment_type', 'paid', 'remaining', 'notes', 'date', 'created_by'],
-          [legacyId(row, 'sale'), row.invoice_no || `INV-${String(idx++).padStart(5, '0')}`, row.customer_name || 'زبون عام', JSON.stringify(items), total, row.payment_type || 'cash', paid, Number(row.remaining ?? (total - paid)), row.notes || '', row.date || new Date(), row.seller_email || row.user_email || row.createdBy || row.created_by || userEmail],
+          [legacyId(row, 'sale'), row.invoice_no || `INV-${String(idx++).padStart(5, '0')}`, row.customer_name || 'زبون عام', JSON.stringify(normalized.items), total, row.payment_type || 'cash', paid, normalized.remaining, row.notes || '', row.date || new Date(), row.seller_email || row.user_email || row.createdBy || row.created_by || userEmail],
           row
         );
       }
@@ -2745,14 +2770,15 @@ async function replaceTableBackedSection(key, value, userEmail) {
       for (const row of value) {
         if (!row || typeof row !== 'object') continue;
         const items = Array.isArray(row.items) ? row.items : [];
-        const total = Number(row.total || 0);
-        const paid = Number(row.paid ?? row.paid_amt ?? 0);
+        const normalized = normalizePurchasePayload(row);
+        const total = normalized.total;
+        const paid = normalized.paid;
         const paymentType = row.payment_type || row.pay_type || 'cash';
         await insertWithOptionalId(
           client,
           'purchases',
           ['legacy_id', 'invoice_no', 'supplier_name', 'items', 'total', 'payment_type', 'paid', 'remaining', 'notes', 'date', 'created_by'],
-          [legacyId(row, 'purchase'), row.invoice_no || `PUR-${String(idx++).padStart(5, '0')}`, row.supplier_name || 'مورد عام', JSON.stringify(items), total, paymentType, paid, Number(row.remaining ?? (total - paid)), row.notes || '', row.date || new Date(), userEmail],
+          [legacyId(row, 'purchase'), row.invoice_no || `PUR-${String(idx++).padStart(5, '0')}`, row.supplier_name || 'مورد عام', JSON.stringify(normalized.items), total, paymentType, paid, normalized.remaining, row.notes || '', row.date || new Date(), userEmail],
           row
         );
       }
@@ -2761,14 +2787,13 @@ async function replaceTableBackedSection(key, value, userEmail) {
       await client.query('TRUNCATE installments RESTART IDENTITY');
       for (const row of value) {
         if (!row || typeof row !== 'object') continue;
-        const amount = Number(row.amount || row.total || 0);
-        const paid = Number(row.paid || 0);
+        const inst = normalizeInstallmentPayload(row);
         await insertWithOptionalId(
           client,
           'installments',
           ['legacy_id', 'customer_name', 'amount', 'paid', 'remaining', 'due_date', 'status', 'notes', 'created_at', 'created_by'],
-          [legacyId(row, 'installment'), row.customer_name || row.customer || '', amount, paid, Number(row.remaining ?? (amount - paid)), row.due_date || null, row.status || 'pending', row.notes || '', row.createdAt || new Date(), userEmail],
-          row
+          [legacyId(row, 'installment'), inst.customer_name || row.customer || '', inst.amount, inst.paid, inst.remaining, inst.due_date || null, inst.status, inst.notes || '', row.createdAt || new Date(), userEmail],
+          inst
         );
       }
       await resetSerial(client, 'installments');
@@ -2810,14 +2835,13 @@ async function replaceTableBackedSection(key, value, userEmail) {
       await client.query('TRUNCATE purchase_installments RESTART IDENTITY');
       for (const row of value) {
         if (!row || typeof row !== 'object') continue;
-        const amount = Number(row.amount || row.total || 0);
-        const paid = Number(row.paid || 0);
+        const inst = normalizePurchaseInstallmentPayload(row);
         await insertWithOptionalId(
           client,
           'purchase_installments',
           ['legacy_id', 'supplier_name', 'amount', 'paid', 'remaining', 'due_date', 'status', 'notes', 'created_at', 'created_by'],
-          [legacyId(row, 'purchase_installment'), row.supplier_name || row.supplier || '', amount, paid, Number(row.remaining ?? (amount - paid)), row.due_date || null, row.status || 'pending', row.notes || '', row.createdAt || new Date(), userEmail],
-          row
+          [legacyId(row, 'purchase_installment'), inst.supplier_name || row.supplier || '', inst.amount, inst.paid, inst.remaining, inst.due_date || null, inst.status, inst.notes || '', row.createdAt || new Date(), userEmail],
+          inst
         );
       }
       await resetSerial(client, 'purchase_installments');
@@ -3183,6 +3207,194 @@ app.delete('/api/products/:id', authenticate, async (req, res) => {
   }
 });
 
+
+// ═══════════════════════════════════════
+// Hardened financial calculation helpers
+// ═══════════════════════════════════════
+const TAX_RATE = 0.05;
+function toNum(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+function money(value) {
+  return Math.round((toNum(value, 0) + Number.EPSILON) * 100) / 100;
+}
+function clampMoney(value, min = 0, max = Number.POSITIVE_INFINITY) {
+  return money(Math.min(Math.max(toNum(value, 0), min), max));
+}
+function normalizeLineItems(items = []) {
+  if (!Array.isArray(items)) return [];
+  return items.map((item = {}) => {
+    const qty = Math.max(1, Math.trunc(toNum(item.qty, 1)));
+    const unit = money(Math.max(0, toNum(item.price ?? item.sell_price ?? item.cost ?? item.buy_price, 0)));
+    const total = money(qty * unit);
+    // ملاحظة: لا نستبدل item.cost (تكلفة الشراء) بسعر البيع — تبقى كما أُرسلت لأغراض تحليل هامش الربح
+    return { ...item, qty, price: unit, total };
+  });
+}
+function normalizeSalePayload(input = {}) {
+  const body = input.sale && typeof input.sale === 'object' ? input.sale : input;
+  const items = normalizeLineItems(body.items || []);
+  const itemSubtotal = money(items.reduce((s, item) => s + item.total, 0));
+  // عند وجود بنود مسعّرة يُحسب الإجمالي الفرعي منها دائماً (مصدر واحد للحقيقة).
+  // يُقبل subtotal المرسل فقط للفواتير المجملة التي بنودها بدون أسعار (itemSubtotal = 0).
+  const subtotal = itemSubtotal > 0 ? itemSubtotal : money(Math.max(0, toNum(body.subtotal, 0)));
+  const discount = clampMoney(body.discount, 0, subtotal);
+  const taxable = money(Math.max(0, subtotal - discount));
+  const taxOn = body.inv_type === 'tax' || body.has_tax === true || toNum(body.tax_amount, 0) > 0;
+  const tax = money(taxOn ? taxable * TAX_RATE : 0);
+  const total = money(taxable + tax);
+  const paid = clampMoney(body.paid ?? body.paid_amt, 0, total);
+  const remaining = money(Math.max(0, total - paid));
+  return { ...body, items, subtotal, discount, taxable, tax_amount: tax, total, paid, paid_amt: paid, remaining, inv_type: body.inv_type || (taxOn ? 'tax' : 'normal') };
+}
+
+function normalizePurchaseLineItems(items = []) {
+  if (!Array.isArray(items)) return [];
+  return items.map((item = {}) => {
+    const qty = Math.max(1, Math.trunc(toNum(item.qty, 1)));
+    const cost = money(Math.max(0, toNum(item.cost ?? item.buy_price ?? item.price, 0)));
+    const total = money(qty * cost);
+    return { ...item, qty, cost, price: cost, total };
+  });
+}
+
+function normalizePurchasePayload(input = {}) {
+  const body = input.purchase && typeof input.purchase === 'object' ? input.purchase : input;
+  const items = normalizePurchaseLineItems(body.items || []);
+  const itemSubtotal = money(items.reduce((s, item) => s + item.total, 0));
+  // عند وجود بنود مسعّرة يُحسب الإجمالي الفرعي منها دائماً (مصدر واحد للحقيقة)
+  const subtotal = itemSubtotal > 0 ? itemSubtotal : money(Math.max(0, toNum(body.subtotal, 0)));
+  const taxOn = body.inv_type === 'tax' || body.has_tax === true || toNum(body.tax_amount, 0) > 0;
+  const tax = money(taxOn ? subtotal * TAX_RATE : 0);
+  const total = money(subtotal + tax);
+  const paid = clampMoney(body.paid ?? body.paid_amt, 0, total);
+  const remaining = money(Math.max(0, total - paid));
+  const paymentType = body.payment_type || body.pay_type || 'cash';
+  return { ...body, items, subtotal, discount: 0, taxable: subtotal, tax_amount: tax, total, paid, paid_amt: paid, remaining, payment_type: paymentType, pay_type: paymentType, inv_type: taxOn ? 'tax' : 'normal', has_tax: taxOn };
+}
+
+function normalizeInstallmentPayload(row = {}) {
+  const amount = money(Math.max(0, toNum(row.amount ?? row.amount_due ?? row.invoice_remaining, 0)));
+  let paidSource = row.amount_paid ?? row.paid_amount;
+  if (paidSource === undefined) paidSource = (row.status === 'paid' || row.paid === true) ? amount : row.paid;
+  const paid = clampMoney(paidSource, 0, amount);
+  const remaining = money(Math.max(0, amount - paid));
+  return { ...row, amount, amount_due: amount, paid, amount_paid: paid, remaining, status: remaining <= 0 ? 'paid' : 'pending' };
+}
+function normalizePurchaseInstallmentPayload(row = {}) {
+  const amount = money(Math.max(0, toNum(row.amount ?? row.total, 0)));
+  const paid = clampMoney(row.paid, 0, amount);
+  const remaining = money(Math.max(0, amount - paid));
+  return { ...row, amount, total: amount, paid, remaining, status: remaining <= 0 ? 'paid' : (row.status || 'pending') };
+}
+async function findProductForUpdate(client, pid) {
+  if (!pid || String(pid) === 'manual' || String(pid).startsWith('new-') || String(pid) === 'sum') return null;
+  const key = String(pid);
+  const result = await client.query(
+    'SELECT id, legacy_id, name, stock_qty FROM products WHERE id::text = $1 OR legacy_id = $1 OR code = $1 LIMIT 1 FOR UPDATE',
+    [key]
+  );
+  return result.rows[0] || null;
+}
+
+async function findCustomerForUpdate(client, customerId) {
+  if (!customerId || String(customerId) === 'cash') return null;
+  const key = String(customerId);
+  const result = await client.query(
+    'SELECT id, legacy_id, name, data FROM customers WHERE id::text = $1 OR legacy_id = $1 LIMIT 1 FOR UPDATE',
+    [key]
+  );
+  return result.rows[0] || null;
+}
+
+async function adjustCustomerFinancials(client, customerId, totalDelta, balanceDelta, userEmail) {
+  const customer = await findCustomerForUpdate(client, customerId);
+  if (!customer) return null;
+  const raw = customer.data && typeof customer.data === 'object' && !Array.isArray(customer.data) ? customer.data : {};
+  const patch = {
+    balance_due: money(Math.max(0, toNum(raw.balance_due || raw.balanceDue, 0) + toNum(balanceDelta, 0))),
+    total_purchases: money(Math.max(0, toNum(raw.total_purchases || raw.totalPurchases, 0) + toNum(totalDelta, 0))),
+    updatedBy: userEmail,
+    updatedAt: new Date().toISOString()
+  };
+  await client.query(
+    `UPDATE customers SET data = COALESCE(data, '{}'::jsonb) || $1::jsonb, updated_at = NOW(), updated_by = $2 WHERE id = $3`,
+    [JSON.stringify(patch), userEmail, customer.id]
+  );
+  return patch;
+}
+
+async function createPurchaseProductFromItem(client, item, purchaseId, userEmail, index = 0) {
+  const code = String(item.code || '').trim() || `MNL-${Date.now().toString().slice(-6)}${index}`;
+  const name = String(item.name || item.title || code).trim();
+  const cost = money(item.cost ?? item.price ?? item.buy_price ?? 0);
+  const result = await client.query(
+    `INSERT INTO products (legacy_id, code, name, category, buy_price, sell_price, stock_qty, notes, created_at, created_by, data)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10::jsonb)
+     RETURNING *`,
+    [item.legacy_id || item.pid || null, code, name, item.category || 'أخرى', cost, money(item.sell_price ?? cost), 0, item.notes || 'أضيف من المشتريات', userEmail, JSON.stringify({ ...item, created_from_purchase_id: purchaseId, is_new_product: true })]
+  );
+  return result.rows[0];
+}
+
+async function allocatePaymentsAcrossRows(client, tableName, rows, totalRemaining, userEmail) {
+  if (!Array.isArray(rows) || !rows.length) return;
+  const totalAmount = money(rows.reduce((sum, row) => sum + money(row.amount || 0), 0));
+  let paidToAllocate = clampMoney(totalAmount - money(totalRemaining || 0), 0, totalAmount);
+  for (const row of rows) {
+    const amount = money(row.amount || 0);
+    const rowPaid = clampMoney(paidToAllocate, 0, amount);
+    const rowRemaining = money(Math.max(0, amount - rowPaid));
+    paidToAllocate = money(Math.max(0, paidToAllocate - rowPaid));
+    const status = rowRemaining <= 0 ? 'paid' : 'pending';
+    const raw = row.data && typeof row.data === 'object' ? row.data : {};
+    await client.query(
+      `UPDATE ${tableName}
+       SET paid = $1, remaining = $2, status = $3, updated_at = NOW(), updated_by = $4,
+           data = COALESCE(data, '{}'::jsonb) || $5::jsonb
+       WHERE id = $6`,
+      [rowPaid, rowRemaining, status, userEmail, JSON.stringify({ ...raw, paid: rowPaid, amount_paid: rowPaid, remaining: rowRemaining, status, updatedBy: userEmail }), row.id]
+    );
+  }
+}
+
+async function syncSaleInstallmentsBalance(client, saleRow, remaining, userEmail) {
+  if (!saleRow) return;
+  const raw = saleRow.data && typeof saleRow.data === 'object' ? saleRow.data : {};
+  const invoiceNo = String(saleRow.invoice_no || raw.invoice_no || '').trim();
+  const saleIds = [saleRow.id, saleRow.legacy_id, raw.id, raw.legacy_id].map(v => String(v || '')).filter(Boolean);
+  if (!invoiceNo && !saleIds.length) return;
+  const result = await client.query(
+    `SELECT * FROM installments
+     WHERE ($1 <> '' AND data->>'invoice_no' = $1)
+        OR ($1 <> '' AND notes ILIKE $2)
+        OR (data->>'sale_id' = ANY($3::text[]))
+     ORDER BY COALESCE(due_date, created_at::date), id`,
+    [invoiceNo, `%${invoiceNo}%`, saleIds]
+  );
+  await allocatePaymentsAcrossRows(client, 'installments', result.rows, remaining, userEmail);
+}
+
+async function syncPurchaseInstallmentsBalance(client, purchaseRow, remaining, userEmail) {
+  if (!purchaseRow) return;
+  const raw = purchaseRow.data && typeof purchaseRow.data === 'object' ? purchaseRow.data : {};
+  const invoiceNo = String(purchaseRow.invoice_no || raw.invoice_no || '').trim();
+  const purchaseIds = [purchaseRow.id, purchaseRow.legacy_id, raw.id, raw.legacy_id, raw.pur_id].map(v => String(v || '')).filter(Boolean);
+  if (!invoiceNo && !purchaseIds.length) return;
+  const result = await client.query(
+    `SELECT * FROM purchase_installments
+     WHERE ($1 <> '' AND data->>'invoice_no' = $1)
+        OR ($1 <> '' AND notes ILIKE $2)
+        OR (data->>'pur_id' = ANY($3::text[]))
+     ORDER BY COALESCE(due_date, created_at::date), id`,
+    [invoiceNo, `%${invoiceNo}%`, purchaseIds]
+  );
+  await allocatePaymentsAcrossRows(client, 'purchase_installments', result.rows, remaining, userEmail);
+}
+
+
+
 // ═══════════════════════════════════════
 // SALES ENDPOINTS
 // ═══════════════════════════════════════
@@ -3352,47 +3564,65 @@ app.get('/api/installments/mine', authenticate, async (req, res) => {
 app.post('/api/sales', authenticate, async (req, res) => {
   const client = await pool.connect();
   try {
-    const { invoice_no, customer_name, items, total, payment_type, paid, notes } = req.body;
-    if (!invoice_no || !items) return res.status(400).json({ error: 'Invoice number and items required' });
+    const sale = normalizeSalePayload(req.body);
+    const incomingInstallments = Array.isArray(req.body.installments) ? req.body.installments : (Array.isArray(req.body.sale?.installments) ? req.body.sale.installments : []);
+    if (!sale.invoice_no || !Array.isArray(sale.items) || !sale.items.length) {
+      return res.status(400).json({ error: 'Invoice number and items required' });
+    }
 
-    const totalNum = Number(total || 0);
-    const paidNum = Number(paid || 0);
     await client.query('BEGIN');
 
-    for (const item of items || []) {
-      if (item.pid && Number.isFinite(Number(item.pid))) {
-        const qty = Number(item.qty || 0);
-        const product = await client.query('SELECT id, name, stock_qty FROM products WHERE id = $1 FOR UPDATE', [item.pid]);
-        if (!product.rowCount) continue;
-        const available = Number(product.rows[0].stock_qty || 0);
-        if (qty < 0) {
-          const err = new Error('كمية الصنف يجب أن تكون أكبر من أو تساوي 0');
-          err.status = 400;
-          throw err;
-        }
-        if (qty > available) {
-          const err = new Error(`لا توجد كمية كافية من المنتج: ${product.rows[0].name} — المتاح ${available}`);
-          err.status = 400;
-          throw err;
-        }
+    // قفل المنتجات وتجميع الكمية المطلوبة لكل منتج — حتى لو تكرر نفس المنتج في أكثر من بند
+    // (الفحص بند-بند كان يسمح بتجاوز المخزون عند تكرار المنتج، والخصم بالقصّ على صفر كان يضيع كميات بصمت)
+    const lockedProducts = new Map();
+    const requiredQty = new Map();
+    for (const item of sale.items) {
+      const product = await findProductForUpdate(client, item.pid);
+      if (!product) continue;
+      const key = String(product.id);
+      if (!lockedProducts.has(key)) lockedProducts.set(key, product);
+      requiredQty.set(key, (requiredQty.get(key) || 0) + item.qty);
+    }
+    for (const [key, product] of lockedProducts) {
+      const available = toNum(product.stock_qty, 0);
+      const needed = requiredQty.get(key) || 0;
+      if (needed > available) {
+        const err = new Error(`لا توجد كمية كافية من المنتج: ${product.name} — المتاح ${available} والمطلوب ${needed}`);
+        err.status = 400;
+        throw err;
       }
     }
 
     const result = await client.query(
-      `INSERT INTO sales (invoice_no, customer_name, items, total, payment_type, paid, remaining, notes, date, created_by)
-       VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $8, NOW(), $9)
+      `INSERT INTO sales (legacy_id, invoice_no, customer_name, items, total, payment_type, paid, remaining, notes, date, created_by, data)
+       VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, COALESCE($10::timestamptz, NOW()), $11, $12::jsonb)
        RETURNING *`,
-      [invoice_no, customer_name || 'زبون عام', JSON.stringify(items || []), totalNum, payment_type || 'cash', paidNum, totalNum - paidNum, notes || '', req.user.email]
+      [sale.legacy_id || sale.id || null, sale.invoice_no, sale.customer_name || 'زبون عام', JSON.stringify(sale.items), sale.total, sale.payment_type || 'cash', sale.paid, sale.remaining, sale.notes || '', sale.date || null, req.user.email, JSON.stringify({ ...sale, createdBy: sale.createdBy || req.user.email, seller_email: sale.seller_email || req.user.email })]
     );
 
-    for (const item of items || []) {
-      if (item.pid && Number.isFinite(Number(item.pid))) {
-        await client.query('UPDATE products SET stock_qty = GREATEST(0, stock_qty - $1) WHERE id = $2', [Number(item.qty || 0), item.pid]);
-      }
+    // خصم المخزون مرة واحدة لكل منتج بالكمية المجمّعة (المنتجات مقفولة FOR UPDATE والفحص أعلاه يضمن الكفاية)
+    for (const [key, product] of lockedProducts) {
+      const needed = requiredQty.get(key) || 0;
+      if (needed <= 0) continue;
+      await client.query('UPDATE products SET stock_qty = stock_qty - $1, updated_at = NOW(), updated_by = $2 WHERE id = $3', [needed, req.user.email, product.id]);
+    }
+
+    await adjustCustomerFinancials(client, sale.customer_id, sale.total, sale.remaining, req.user.email);
+
+    const savedInstallments = [];
+    for (const rawInst of incomingInstallments) {
+      const inst = normalizeInstallmentPayload({ ...rawInst, invoice_no: rawInst.invoice_no || sale.invoice_no, sale_id: rawInst.sale_id || sale.id || result.rows[0].legacy_id || String(result.rows[0].id), customer_name: rawInst.customer_name || sale.customer_name, seller_name: rawInst.seller_name || sale.seller_name, seller_email: rawInst.seller_email || sale.seller_email || req.user.email, createdBy: rawInst.createdBy || req.user.email });
+      if (inst.amount <= 0) continue;
+      const instResult = await client.query(
+        `INSERT INTO installments (legacy_id, customer_name, amount, paid, remaining, due_date, status, notes, created_at, created_by, data)
+         VALUES ($1, $2, $3, $4, $5, $6::date, $7, $8, NOW(), $9, $10::jsonb) RETURNING *`,
+        [inst.legacy_id || inst.id || null, inst.customer_name || sale.customer_name || '', inst.amount, inst.paid, inst.remaining, inst.due_date || null, inst.status, inst.notes || ('فاتورة: ' + sale.invoice_no), req.user.email, JSON.stringify(inst)]
+      );
+      savedInstallments.push(rowInstallment(instResult.rows[0]));
     }
 
     await client.query('COMMIT');
-    res.json(rowSale(result.rows[0]));
+    res.json({ ...rowSale(result.rows[0]), installments: savedInstallments });
   } catch (err) {
     await client.query('ROLLBACK');
     if (err.code === '23505') return res.status(409).json({ error: 'Invoice number already exists' });
@@ -3403,21 +3633,37 @@ app.post('/api/sales', authenticate, async (req, res) => {
 });
 
 app.put('/api/sales/:id', authenticate, async (req, res) => {
+  const client = await pool.connect();
   try {
     const { customer_name, payment_type, paid, notes } = req.body;
-    const sale = await q('SELECT total FROM sales WHERE id = $1', [req.params.id]);
-    if (!sale.rowCount) return res.status(404).json({ error: 'Sale not found' });
-    const paidNum = Number(paid || 0);
-    const totalNum = Number(sale.rows[0].total || 0);
-    const result = await q(
+    await client.query('BEGIN');
+    const sale = await client.query('SELECT id, legacy_id, invoice_no, total, remaining, data FROM sales WHERE id = $1 FOR UPDATE', [req.params.id]);
+    if (!sale.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Sale not found' });
+    }
+    const saleRow = sale.rows[0];
+    const totalNum = money(Math.max(0, saleRow.total || 0));
+    const oldRemaining = money(Math.max(0, saleRow.remaining || 0));
+    const paidNum = clampMoney(paid, 0, totalNum);
+    const remainingNum = money(Math.max(0, totalNum - paidNum));
+    const raw = saleRow.data || {};
+    const result = await client.query(
       `UPDATE sales
-       SET customer_name = $1, payment_type = $2, paid = $3, remaining = $4, notes = $5, updated_at = NOW()
-       WHERE id = $6`,
-      [customer_name, payment_type, paidNum, totalNum - paidNum, notes || '', req.params.id]
+       SET customer_name = $1, payment_type = $2, paid = $3, remaining = $4, notes = $5, updated_at = NOW(), updated_by = $6,
+           data = COALESCE(data, '{}'::jsonb) || $8::jsonb
+       WHERE id = $7 RETURNING *`,
+      [customer_name || raw.customer_name || 'زبون عام', payment_type || raw.payment_type || 'cash', paidNum, remainingNum, notes ?? raw.notes ?? '', req.user.email, req.params.id, JSON.stringify({ paid: paidNum, remaining: remainingNum, payment_type: payment_type || raw.payment_type || 'cash', notes: notes ?? raw.notes ?? '', updatedBy: req.user.email })]
     );
-    res.json({ acknowledged: true, modifiedCount: result.rowCount });
+    await adjustCustomerFinancials(client, raw.customer_id, 0, remainingNum - oldRemaining, req.user.email);
+    await syncSaleInstallmentsBalance(client, { ...saleRow, ...result.rows[0] }, remainingNum, req.user.email);
+    await client.query('COMMIT');
+    res.json(rowSale(result.rows[0]));
   } catch (err) {
+    await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
@@ -3430,11 +3676,15 @@ app.delete('/api/sales/:id', authenticate, async (req, res) => {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Sale not found' });
     }
-    for (const item of sale.rows[0].items || []) {
-      if (item.pid && Number.isFinite(Number(item.pid))) {
-        await client.query('UPDATE products SET stock_qty = stock_qty + $1 WHERE id = $2', [Number(item.qty || 0), item.pid]);
-      }
+    const items = normalizeLineItems(sale.rows[0].items || []);
+    for (const item of items) {
+      const product = await findProductForUpdate(client, item.pid);
+      if (!product) continue;
+      await client.query('UPDATE products SET stock_qty = stock_qty + $1, updated_at = NOW(), updated_by = $2 WHERE id = $3', [item.qty, req.user.email, product.id]);
     }
+    const saleRaw = sale.rows[0].data || {};
+    await adjustCustomerFinancials(client, saleRaw.customer_id, -money(sale.rows[0].total || 0), -money(sale.rows[0].remaining || 0), req.user.email);
+    await client.query('DELETE FROM installments WHERE notes ILIKE $1 OR data->>\'invoice_no\' = $2', [`%${sale.rows[0].invoice_no}%`, sale.rows[0].invoice_no]);
     const result = await client.query('DELETE FROM sales WHERE id = $1', [req.params.id]);
     await client.query('COMMIT');
     res.json({ acknowledged: true, deletedCount: result.rowCount });
@@ -3461,61 +3711,128 @@ app.get('/api/purchases', authenticate, async (req, res) => {
 app.post('/api/purchases', authenticate, async (req, res) => {
   const client = await pool.connect();
   try {
-    const { invoice_no, supplier_name, items, total, payment_type, paid, notes } = req.body;
-    if (!invoice_no || !items) return res.status(400).json({ error: 'Invoice number and items required' });
-    const totalNum = Number(total || 0);
-    const paidNum = Number(paid || 0);
+    const purchase = normalizePurchasePayload(req.body);
+    if (!purchase.invoice_no || !Array.isArray(purchase.items) || !purchase.items.length) {
+      return res.status(400).json({ error: 'Invoice number and items required' });
+    }
 
     await client.query('BEGIN');
-    const result = await client.query(
-      `INSERT INTO purchases (invoice_no, supplier_name, items, total, payment_type, paid, remaining, notes, date, created_by)
-       VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $8, NOW(), $9)
-       RETURNING *`,
-      [invoice_no, supplier_name || 'مورد عام', JSON.stringify(items || []), totalNum, payment_type || 'cash', paidNum, totalNum - paidNum, notes || '', req.user.email]
-    );
 
-    for (const item of items || []) {
-      if (item.pid && Number.isFinite(Number(item.pid))) {
-        await client.query('UPDATE products SET stock_qty = stock_qty + $1 WHERE id = $2', [Number(item.qty || 0), item.pid]);
+    const finalizedItems = [];
+    for (let i = 0; i < purchase.items.length; i++) {
+      const item = normalizePurchaseLineItems([purchase.items[i]])[0];
+      if (!item || item.qty <= 0 || item.cost <= 0) continue;
+      let product = await findProductForUpdate(client, item.pid);
+      if (!product && (item.is_new_product || String(item.pid || '').startsWith('new-') || !item.pid)) {
+        product = await createPurchaseProductFromItem(client, item, purchase.id || purchase.legacy_id || null, req.user.email, i);
+      }
+      if (product) {
+        await client.query('UPDATE products SET stock_qty = stock_qty + $1, buy_price = $2, updated_at = NOW(), updated_by = $3 WHERE id = $4', [item.qty, item.cost, req.user.email, product.id]);
+        finalizedItems.push({ ...item, pid: String(product.legacy_id || product.id), db_product_id: String(product.id), code: item.code || product.code, name: item.name || product.name, cost: item.cost, price: item.cost, total: item.total });
+      } else {
+        finalizedItems.push(item);
       }
     }
 
+    const normalizedPurchase = normalizePurchasePayload({ ...purchase, items: finalizedItems });
+    const result = await client.query(
+      `INSERT INTO purchases (legacy_id, invoice_no, supplier_name, items, total, payment_type, paid, remaining, notes, date, created_by, data)
+       VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, COALESCE($10::timestamptz, NOW()), $11, $12::jsonb)
+       RETURNING *`,
+      [normalizedPurchase.legacy_id || normalizedPurchase.id || null, normalizedPurchase.invoice_no, normalizedPurchase.supplier_name || 'مورد عام', JSON.stringify(normalizedPurchase.items), normalizedPurchase.total, normalizedPurchase.payment_type || normalizedPurchase.pay_type || 'cash', normalizedPurchase.paid, normalizedPurchase.remaining, normalizedPurchase.notes || '', normalizedPurchase.date || null, req.user.email, JSON.stringify(normalizedPurchase)]
+    );
+
+    let purchaseInstallment = null;
+    if (normalizedPurchase.remaining > 0 && (normalizedPurchase.payment_type === 'deferred' || normalizedPurchase.pay_type === 'deferred' || req.body.create_purchase_installment === true)) {
+      const inst = normalizePurchaseInstallmentPayload({
+        legacy_id: normalizedPurchase.purchase_installment_id || `${normalizedPurchase.id || normalizedPurchase.invoice_no}-deferred`,
+        pur_id: normalizedPurchase.id || result.rows[0].legacy_id || String(result.rows[0].id),
+        invoice_no: normalizedPurchase.invoice_no,
+        supplier_id: normalizedPurchase.supplier_id || '',
+        supplier_name: normalizedPurchase.supplier_name || 'مورد عام',
+        amount: normalizedPurchase.total,
+        paid: normalizedPurchase.paid,
+        remaining: normalizedPurchase.remaining,
+        due_date: normalizedPurchase.due_date || null,
+        status: 'pending',
+        notes: 'فاتورة مشتريات: ' + normalizedPurchase.invoice_no
+      });
+      const instResult = await client.query(
+        `INSERT INTO purchase_installments (legacy_id, supplier_name, amount, paid, remaining, due_date, status, notes, created_at, created_by, data)
+         VALUES ($1, $2, $3, $4, $5, $6::date, $7, $8, NOW(), $9, $10::jsonb) RETURNING *`,
+        [inst.legacy_id || null, inst.supplier_name || '', inst.amount, inst.paid, inst.remaining, inst.due_date || null, inst.status, inst.notes || '', req.user.email, JSON.stringify(inst)]
+      );
+      purchaseInstallment = rowPurchaseInstallment(instResult.rows[0]);
+    }
+
     await client.query('COMMIT');
-    res.json(rowPurchase(result.rows[0]));
+    res.json({ ...rowPurchase(result.rows[0]), purchaseInstallment });
   } catch (err) {
     await client.query('ROLLBACK');
     if (err.code === '23505') return res.status(409).json({ error: 'Invoice number already exists' });
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message });
   } finally {
     client.release();
   }
 });
 
 app.put('/api/purchases/:id', authenticate, async (req, res) => {
+  const client = await pool.connect();
   try {
     const { supplier_name, payment_type, paid, notes } = req.body;
-    const purchase = await q('SELECT total FROM purchases WHERE id = $1', [req.params.id]);
-    if (!purchase.rowCount) return res.status(404).json({ error: 'Purchase not found' });
-    const paidNum = Number(paid || 0);
-    const totalNum = Number(purchase.rows[0].total || 0);
-    const result = await q(
+    await client.query('BEGIN');
+    const purchase = await client.query('SELECT id, legacy_id, invoice_no, total, remaining, data FROM purchases WHERE id = $1 FOR UPDATE', [req.params.id]);
+    if (!purchase.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Purchase not found' });
+    }
+    const purchaseRow = purchase.rows[0];
+    const raw = purchaseRow.data || {};
+    const totalNum = money(Math.max(0, purchaseRow.total || 0));
+    const paidNum = clampMoney(paid, 0, totalNum);
+    const remainingNum = money(Math.max(0, totalNum - paidNum));
+    const result = await client.query(
       `UPDATE purchases
-       SET supplier_name = $1, payment_type = $2, paid = $3, remaining = $4, notes = $5, updated_at = NOW()
-       WHERE id = $6`,
-      [supplier_name, payment_type, paidNum, totalNum - paidNum, notes || '', req.params.id]
+       SET supplier_name = $1, payment_type = $2, paid = $3, remaining = $4, notes = $5, updated_at = NOW(), updated_by = $6,
+           data = COALESCE(data, '{}'::jsonb) || $8::jsonb
+       WHERE id = $7 RETURNING *`,
+      [supplier_name || raw.supplier_name || 'مورد عام', payment_type || raw.payment_type || raw.pay_type || 'cash', paidNum, remainingNum, notes ?? raw.notes ?? '', req.user.email, req.params.id, JSON.stringify({ paid: paidNum, paid_amt: paidNum, remaining: remainingNum, payment_type: payment_type || raw.payment_type || raw.pay_type || 'cash', notes: notes ?? raw.notes ?? '', updatedBy: req.user.email })]
     );
-    res.json({ acknowledged: true, modifiedCount: result.rowCount });
+    await syncPurchaseInstallmentsBalance(client, { ...purchaseRow, ...result.rows[0] }, remainingNum, req.user.email);
+    await client.query('COMMIT');
+    res.json(rowPurchase(result.rows[0]));
   } catch (err) {
+    await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
 app.delete('/api/purchases/:id', authenticate, async (req, res) => {
+  const client = await pool.connect();
   try {
-    const result = await q('DELETE FROM purchases WHERE id = $1', [req.params.id]);
+    await client.query('BEGIN');
+    const purchase = await client.query('SELECT * FROM purchases WHERE id = $1 FOR UPDATE', [req.params.id]);
+    if (!purchase.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Purchase not found' });
+    }
+    const items = normalizePurchaseLineItems(purchase.rows[0].items || []);
+    for (const item of items) {
+      const product = await findProductForUpdate(client, item.pid || item.db_product_id);
+      if (!product) continue;
+      await client.query('UPDATE products SET stock_qty = GREATEST(0, stock_qty - $1), updated_at = NOW(), updated_by = $2 WHERE id = $3', [item.qty, req.user.email, product.id]);
+    }
+    await client.query('DELETE FROM purchase_installments WHERE data->>\'invoice_no\' = $1 OR notes ILIKE $2', [purchase.rows[0].invoice_no, `%${purchase.rows[0].invoice_no}%`]);
+    const result = await client.query('DELETE FROM purchases WHERE id = $1', [req.params.id]);
+    await client.query('COMMIT');
     res.json({ acknowledged: true, deletedCount: result.rowCount });
   } catch (err) {
+    await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
@@ -3714,76 +4031,28 @@ app.get('/api/installments', authenticate, async (req, res) => {
 
 app.post('/api/installments', authenticate, async (req, res) => {
   try {
-    const { customer_name, amount, paid, remaining, due_date, status, notes } = req.body;
-    const amountNum = Number(amount || 0);
-    const paidNum = Number(paid || 0);
-
+    const inst = normalizeInstallmentPayload(req.body);
     const result = await q(
-      `INSERT INTO installments (
-        legacy_id, customer_name, amount, paid, remaining,
-        due_date, status, notes, data, created_at, created_by
-      )
-      VALUES ($1, $2, $3, $4, $5, $6::date, $7, $8, $9::jsonb, NOW(), $10)
-      RETURNING *`,
-      [
-        req.body.legacy_id || req.body.id || null,
-        customer_name || '',
-        amountNum,
-        paidNum,
-        Number(remaining ?? (amountNum - paidNum)),
-        due_date || null,
-        status || 'pending',
-        notes || '',
-        JSON.stringify(req.body),
-        req.user.email
-      ]
+      `INSERT INTO installments (legacy_id, customer_name, amount, paid, remaining, due_date, status, notes, created_at, created_by, data)
+       VALUES ($1, $2, $3, $4, $5, $6::date, $7, $8, NOW(), $9, $10::jsonb) RETURNING *`,
+      [inst.legacy_id || inst.id || null, inst.customer_name || '', inst.amount, inst.paid, inst.remaining, inst.due_date || null, inst.status, inst.notes || '', req.user.email, JSON.stringify(inst)]
     );
-
     res.json(rowInstallment(result.rows[0]));
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
 app.put('/api/installments/:id', authenticate, async (req, res) => {
   try {
-    const { customer_name, amount, paid, remaining, due_date, status, notes } = req.body;
-    const amountNum = Number(amount || 0);
-    const paidNum = Number(paid || 0);
-
+    const inst = normalizeInstallmentPayload(req.body);
     const result = await q(
-      `UPDATE installments SET
-        customer_name = $1,
-        amount = $2,
-        paid = $3,
-        remaining = $4,
-        due_date = $5::date,
-        status = $6,
-        notes = $7,
-        data = COALESCE(data, '{}'::jsonb) || $8::jsonb,
-        updated_at = NOW(),
-        updated_by = $9
-      WHERE id = $10
-      RETURNING *`,
-      [
-        customer_name || '',
-        amountNum,
-        paidNum,
-        Number(remaining ?? (amountNum - paidNum)),
-        due_date || null,
-        status || 'pending',
-        notes || '',
-        JSON.stringify(req.body),
-        req.user.email,
-        req.params.id
-      ]
+      `UPDATE installments SET customer_name = $1, amount = $2, paid = $3, remaining = $4, due_date = $5::date, status = $6, notes = $7, updated_at = NOW(), updated_by = $8, data = COALESCE(data, '{}'::jsonb) || $10::jsonb WHERE id = $9 RETURNING *`,
+      [inst.customer_name || '', inst.amount, inst.paid, inst.remaining, inst.due_date || null, inst.status, inst.notes || '', req.user.email, req.params.id, JSON.stringify(inst)]
     );
-
     if (!result.rowCount) return res.status(404).json({ error: 'Installment not found' });
     res.json(rowInstallment(result.rows[0]));
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
 app.delete('/api/installments/:id', authenticate, async (req, res) => {
   try {
     const result = await q('DELETE FROM installments WHERE id = $1', [req.params.id]);
@@ -3842,13 +4111,11 @@ app.get('/api/purchase-installments', authenticate, async (req, res) => {
 
 app.post('/api/purchase-installments', authenticate, async (req, res) => {
   try {
-    const { supplier_name, amount, paid, remaining, due_date, status, notes } = req.body;
-    const amountNum = Number(amount || 0);
-    const paidNum = Number(paid || 0);
+    const inst = normalizePurchaseInstallmentPayload(req.body);
     const result = await q(
-      `INSERT INTO purchase_installments (legacy_id, supplier_name, amount, paid, remaining, due_date, status, notes, created_at, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6::date, $7, $8, NOW(), $9) RETURNING *`,
-      [req.body.legacy_id || req.body.id || null, supplier_name || '', amountNum, paidNum, Number(remaining ?? (amountNum - paidNum)), due_date || null, status || 'pending', notes || '', req.user.email]
+      `INSERT INTO purchase_installments (legacy_id, supplier_name, amount, paid, remaining, due_date, status, notes, created_at, created_by, data)
+       VALUES ($1, $2, $3, $4, $5, $6::date, $7, $8, NOW(), $9, $10::jsonb) RETURNING *`,
+      [inst.legacy_id || inst.id || null, inst.supplier_name || '', inst.amount, inst.paid, inst.remaining, inst.due_date || null, inst.status, inst.notes || '', req.user.email, JSON.stringify(inst)]
     );
     res.json(rowPurchaseInstallment(result.rows[0]));
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -3856,12 +4123,10 @@ app.post('/api/purchase-installments', authenticate, async (req, res) => {
 
 app.put('/api/purchase-installments/:id', authenticate, async (req, res) => {
   try {
-    const { supplier_name, amount, paid, remaining, due_date, status, notes } = req.body;
-    const amountNum = Number(amount || 0);
-    const paidNum = Number(paid || 0);
+    const inst = normalizePurchaseInstallmentPayload(req.body);
     const result = await q(
-      `UPDATE purchase_installments SET supplier_name = $1, amount = $2, paid = $3, remaining = $4, due_date = $5::date, status = $6, notes = $7, updated_at = NOW(), updated_by = $8 WHERE id = $9 RETURNING *`,
-      [supplier_name || '', amountNum, paidNum, Number(remaining ?? (amountNum - paidNum)), due_date || null, status || 'pending', notes || '', req.user.email, req.params.id]
+      `UPDATE purchase_installments SET supplier_name = $1, amount = $2, paid = $3, remaining = $4, due_date = $5::date, status = $6, notes = $7, updated_at = NOW(), updated_by = $8, data = COALESCE(data, '{}'::jsonb) || $10::jsonb WHERE id = $9 RETURNING *`,
+      [inst.supplier_name || '', inst.amount, inst.paid, inst.remaining, inst.due_date || null, inst.status, inst.notes || '', req.user.email, req.params.id, JSON.stringify(inst)]
     );
     if (!result.rowCount) return res.status(404).json({ error: 'Purchase installment not found' });
     res.json(rowPurchaseInstallment(result.rows[0]));
@@ -3878,11 +4143,14 @@ app.delete('/api/purchase-installments/:id', authenticate, async (req, res) => {
 // ═══════════════════════════════════════
 // REPORTS ENDPOINTS
 // ═══════════════════════════════════════
+// المنطقة الزمنية لتقارير "اليوم/الشهر" — توقيت السيرفر قد يكون UTC فتُحسب فواتير ما قبل منتصف الليل على اليوم الخطأ
+const REPORT_TZ = process.env.REPORT_TZ || 'Asia/Dubai';
+
 app.get('/api/reports/daily', authenticate, async (req, res) => {
   try {
-    const sales = await q(`SELECT * FROM sales WHERE date >= date_trunc('day', NOW()) AND date < date_trunc('day', NOW()) + interval '1 day'`);
-    const purchases = await q(`SELECT * FROM purchases WHERE date >= date_trunc('day', NOW()) AND date < date_trunc('day', NOW()) + interval '1 day'`);
-    const expenses = await q(`SELECT * FROM expenses WHERE date >= date_trunc('day', NOW()) AND date < date_trunc('day', NOW()) + interval '1 day'`);
+    const sales = await q(`SELECT * FROM sales WHERE (date AT TIME ZONE $1)::date = (NOW() AT TIME ZONE $1)::date`, [REPORT_TZ]);
+    const purchases = await q(`SELECT * FROM purchases WHERE (date AT TIME ZONE $1)::date = (NOW() AT TIME ZONE $1)::date`, [REPORT_TZ]);
+    const expenses = await q(`SELECT * FROM expenses WHERE (date AT TIME ZONE $1)::date = (NOW() AT TIME ZONE $1)::date`, [REPORT_TZ]);
 
     const salesRows = sales.rows.map(rowSale);
     const purchaseRows = purchases.rows.map(rowPurchase);
@@ -3922,12 +4190,15 @@ app.get('/api/reports/monthly', authenticate, async (req, res) => {
   try {
     const month = Number(req.query.month ?? new Date().getMonth());
     const year = Number(req.query.year ?? new Date().getFullYear());
-    const start = new Date(year, month, 1);
-    const end = new Date(year, month + 1, 1);
+    if (!Number.isInteger(month) || month < 0 || month > 11 || !Number.isInteger(year) || year < 2000 || year > 2200) {
+      return res.status(400).json({ error: 'شهر أو سنة غير صحيحة' });
+    }
+    // الشهر يصل 0-based من الواجهة (مثل getMonth) — وحدود الشهر تُحسب على التوقيت المحلي للنشاط
+    const monthFilter = `(date AT TIME ZONE $3)::date >= make_date($1, $2, 1) AND (date AT TIME ZONE $3)::date < (make_date($1, $2, 1) + interval '1 month')::date`;
 
-    const sales = await q('SELECT * FROM sales WHERE date >= $1 AND date < $2', [start, end]);
-    const purchases = await q('SELECT * FROM purchases WHERE date >= $1 AND date < $2', [start, end]);
-    const expenses = await q('SELECT * FROM expenses WHERE date >= $1 AND date < $2', [start, end]);
+    const sales = await q(`SELECT * FROM sales WHERE ${monthFilter}`, [year, month + 1, REPORT_TZ]);
+    const purchases = await q(`SELECT * FROM purchases WHERE ${monthFilter}`, [year, month + 1, REPORT_TZ]);
+    const expenses = await q(`SELECT * FROM expenses WHERE ${monthFilter}`, [year, month + 1, REPORT_TZ]);
     const salesRows = sales.rows.map(rowSale);
     const purchaseRows = purchases.rows.map(rowPurchase);
     const expenseRows = expenses.rows.map(rowExpense);
