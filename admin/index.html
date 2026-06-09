@@ -1,0 +1,818 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BQ Admin Pro V25</title>
+  <style>
+    :root{
+      --bg:#f5f7fb;
+      --surface:#ffffff;
+      --surface-2:#f8fafc;
+      --text:#111827;
+      --muted:#64748b;
+      --border:#e5e7eb;
+      --dark:#111318;
+      --dark-2:#1d2028;
+      --gold:#d4af37;
+      --gold-2:#ffc107;
+      --green:#10b981;
+      --red:#ef4444;
+      --orange:#f59e0b;
+      --blue:#2563eb;
+      --shadow:0 18px 45px rgba(15,23,42,.08);
+      --shadow-soft:0 10px 25px rgba(15,23,42,.06);
+      --radius:18px;
+      --sidebar:292px;
+    }
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
+    body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Tahoma,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+    button,input,select,textarea{font-family:inherit}
+    button{cursor:pointer}
+    .hidden{display:none!important}
+    .access-hidden{display:none!important}
+    .ltr{direction:ltr;text-align:left}
+
+    .login{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:radial-gradient(circle at 20% 20%,rgba(255,193,7,.18),transparent 28%),linear-gradient(135deg,#111318,#22252d 55%,#09090b)}
+    .login-shell{width:min(980px,100%);display:grid;grid-template-columns:1.08fr .92fr;align-items:stretch;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:30px;overflow:hidden;box-shadow:0 35px 110px rgba(0,0,0,.32);backdrop-filter:blur(18px)}
+    .login-hero{padding:42px;color:#fff;display:flex;flex-direction:column;justify-content:space-between;min-height:520px;background:linear-gradient(135deg,rgba(212,175,55,.20),transparent)}
+    .hero-badge{width:68px;height:68px;border-radius:22px;background:linear-gradient(135deg,var(--gold),var(--gold-2));display:flex;align-items:center;justify-content:center;color:#151515;font-weight:1000;font-size:22px;box-shadow:0 16px 40px rgba(212,175,55,.22)}
+    .hero-title{font-size:42px;line-height:1.16;margin:28px 0 12px;font-weight:1000;letter-spacing:-.8px}
+    .hero-subtitle{color:#cbd5e1;font-size:15px;line-height:1.9;max-width:520px}
+    .hero-pills{display:flex;gap:10px;flex-wrap:wrap;margin-top:28px}
+    .hero-pill{border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.07);border-radius:999px;padding:9px 13px;color:#f8fafc;font-size:13px;font-weight:750}
+    .login-card{background:var(--surface);padding:38px;display:flex;flex-direction:column;justify-content:center}
+    .brand{display:flex;gap:13px;align-items:center;margin-bottom:24px}
+    .logo{width:54px;height:54px;border-radius:18px;background:linear-gradient(135deg,var(--gold),var(--gold-2));color:#151515;display:flex;align-items:center;justify-content:center;font-weight:1000;box-shadow:0 12px 30px rgba(212,175,55,.25)}
+    .brand h2{margin:0;font-size:24px;letter-spacing:-.3px}
+    .muted{color:var(--muted)}
+    .field{display:flex;flex-direction:column;gap:8px;margin-bottom:15px}
+    .field label,.form-group label{font-weight:850;font-size:13px;color:#273142}
+    .field input,.field select,.field textarea,.form-group input,.form-group select,.form-group textarea,.select,.search-input{border:1px solid #d9e2ef;border-radius:13px;padding:12px 13px;font-size:14px;background:#fff;outline:none;transition:.2s;min-height:44px;color:var(--text)}
+    .field input:focus,.field select:focus,.field textarea:focus,.form-group input:focus,.form-group select:focus,.form-group textarea:focus,.select:focus,.search-input:focus{border-color:var(--gold);box-shadow:0 0 0 4px rgba(212,175,55,.12)}
+    textarea{resize:vertical}
+
+    .btn{border:0;border-radius:13px;padding:11px 15px;font-weight:900;display:inline-flex;align-items:center;gap:8px;justify-content:center;transition:.2s;text-decoration:none;white-space:nowrap;min-height:42px}
+    .btn:hover{transform:translateY(-1px)}
+    .btn:disabled{opacity:.6;cursor:not-allowed;transform:none}
+    .btn-primary{background:linear-gradient(135deg,var(--gold),var(--gold-2));color:#171717;box-shadow:0 12px 28px rgba(212,175,55,.22)}
+    .btn-dark{background:#111827;color:#facc15}
+    .btn-light{background:#eef3f9;color:#334155}
+    .btn-danger{background:var(--red);color:#fff}
+    .btn-warning{background:var(--orange);color:#fff}
+    .btn-success{background:var(--green);color:#fff}
+    .btn-outline{background:#fff;color:#334155;border:1px solid #dbe3ef}
+    .btn-ghost{background:transparent;color:#334155;border:1px solid transparent}
+    .btn-sm{font-size:12px;padding:7px 10px;min-height:34px;border-radius:10px}
+    .icon-btn{width:42px;height:42px;padding:0;border-radius:13px}
+
+    .alert{display:none;border-radius:13px;padding:12px 13px;margin:10px 0;font-size:14px;font-weight:750}
+    .alert.show{display:block}
+    .alert-error{background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
+    .success-msg{background:#ecfdf5;color:#166534;border:1px solid #bbf7d0;border-radius:13px;padding:12px;margin-bottom:14px}
+
+    .layout{display:none;min-height:100vh}
+    .sidebar{width:var(--sidebar);position:fixed;top:0;bottom:0;background:linear-gradient(180deg,#111318,#20232c 58%,#101114);color:#f8fafc;padding:18px;overflow:auto;z-index:20;box-shadow:12px 0 35px rgba(15,23,42,.13)}
+    html[dir="rtl"] .sidebar{right:0;border-left:1px solid rgba(212,175,55,.28)}
+    html[dir="ltr"] .sidebar{left:0;border-right:1px solid rgba(212,175,55,.28)}
+    .side-brand{display:flex;align-items:center;gap:12px;padding:8px 8px 18px;border-bottom:1px solid rgba(255,255,255,.08);margin-bottom:16px}
+    .side-title{font-size:18px;font-weight:1000;color:#fff;margin:0}
+    .side-subtitle{font-size:12px;color:#94a3b8;margin-top:3px}
+    .side-user-card{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);padding:12px;border-radius:16px;margin-bottom:14px}
+    .avatar{width:40px;height:40px;border-radius:14px;background:linear-gradient(135deg,var(--gold),var(--gold-2));color:#111318;font-weight:1000;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+    .side-user{font-size:12px;color:#cbd5e1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:185px}
+    .side-role{font-size:11px;color:#facc15;font-weight:800;margin-top:2px}
+    .nav{display:flex;flex-direction:column;gap:7px}
+    .nav button{width:100%;border:1px solid transparent;background:transparent;color:#cbd5e1;border-radius:14px;padding:12px;text-align:inherit;font-weight:850;display:flex;gap:10px;align-items:center;transition:.2s}
+    .nav button.active,.nav button:hover{background:rgba(212,175,55,.14);border-color:rgba(212,175,55,.26);color:#fff}
+    .nav .nav-icon{width:28px;height:28px;border-radius:10px;background:rgba(255,255,255,.07);display:flex;align-items:center;justify-content:center}
+    .nav button.active .nav-icon{background:linear-gradient(135deg,var(--gold),var(--gold-2));color:#111318}
+    .logout-btn{margin-top:14px!important;background:rgba(239,68,68,.12)!important;border-color:rgba(239,68,68,.25)!important;color:#fecaca!important}
+
+    .main{padding:22px;min-height:100vh;transition:.2s}
+    html[dir="rtl"] .main{margin-right:var(--sidebar)}
+    html[dir="ltr"] .main{margin-left:var(--sidebar)}
+    .topbar{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:18px;background:rgba(255,255,255,.82);border:1px solid rgba(226,232,240,.9);box-shadow:var(--shadow-soft);border-radius:22px;padding:15px;backdrop-filter:blur(16px);position:sticky;top:14px;z-index:10}
+    .topbar h1{margin:0;font-size:22px;font-weight:1000;letter-spacing:-.3px}
+    .breadcrumb{color:var(--muted);font-size:12px;font-weight:750;margin-top:3px}
+    .topbar-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .lang-toggle{background:#111827;color:#facc15;border:1px solid rgba(212,175,55,.4);border-radius:13px;padding:10px 14px;font-weight:1000;min-width:72px}
+    .page{display:none;animation:fadeIn .24s ease}
+    .page.active{display:block}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+    .section-head{display:flex;justify-content:space-between;align-items:flex-end;gap:14px;margin:6px 0 16px}
+    .section-head h2{margin:0;font-size:22px;font-weight:1000}
+    .section-head p{margin:4px 0 0;color:var(--muted);font-size:13px}
+    .cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:16px}
+    .card{background:var(--surface);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow-soft);border:1px solid var(--border);position:relative;overflow:hidden}
+    .card:before{content:"";position:absolute;top:0;inset-inline-start:0;width:5px;height:100%;background:linear-gradient(var(--gold),var(--gold-2))}
+    .metric{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+    .metric-icon{width:42px;height:42px;border-radius:15px;background:#fff7d6;color:#9a6b00;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+    .card h3{margin:0 0 6px;color:#374151;font-size:13px;font-weight:900}
+    .val{font-size:30px;font-weight:1000;color:#111827;letter-spacing:-.7px}
+    .card-foot{margin-top:10px;color:var(--muted);font-size:12px;font-weight:750}
+
+    .panel{background:var(--surface);border-radius:22px;box-shadow:var(--shadow-soft);border:1px solid var(--border);overflow:hidden;margin-bottom:16px}
+    .panel-header{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,#fff,#fbfdff)}
+    .panel-title{margin:0;font-size:16px;font-weight:1000}
+    .panel-subtitle{color:var(--muted);font-size:12px;margin-top:4px}
+    .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px;background:#fff;border:1px solid var(--border);border-radius:18px;padding:12px;box-shadow:var(--shadow-soft)}
+    .search-input{min-width:230px;flex:1}
+    .select{min-width:150px}
+
+    .table-wrap{overflow:auto;background:#fff}
+    table{width:100%;border-collapse:collapse;min-width:760px}
+    th,td{padding:13px 14px;border-bottom:1px solid #eef2f7;text-align:inherit;font-size:13px;vertical-align:middle}
+    thead{background:#f8fafc;position:sticky;top:0;z-index:2}
+    thead th{color:#475569;font-weight:1000;white-space:nowrap}
+    tbody tr:hover{background:#fffaf0}
+    .td-main{font-weight:900;color:#111827}
+    .td-sub{font-size:12px;color:var(--muted);margin-top:3px}
+    .badge{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:900;white-space:nowrap}
+    .badge-ok{background:#dcfce7;color:#166534}
+    .badge-off{background:#fee2e2;color:#991b1b}
+    .badge-info{background:#dbeafe;color:#1e40af}
+    .badge-gold{background:#fef3c7;color:#92400e}
+    .badge-dark{background:#e5e7eb;color:#111827}
+    .actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-start}
+    html[dir="rtl"] .actions{justify-content:flex-end}
+    .empty{padding:44px;text-align:center;color:var(--muted);font-weight:850}
+
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+    .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+    .form-group{display:flex;flex-direction:column;gap:7px;margin-bottom:14px}
+    .json-editor{min-height:310px;border:1px solid #d9e2ef;border-radius:16px;padding:14px;background:#0f172a;color:#e2e8f0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;direction:ltr;text-align:left;line-height:1.6;outline:none;width:100%}
+    .json-editor:focus{border-color:var(--gold);box-shadow:0 0 0 4px rgba(212,175,55,.12)}
+    .data-layout{display:grid;grid-template-columns:340px 1fr;gap:16px;align-items:start}
+    .section-list{display:flex;flex-direction:column;gap:8px;max-height:540px;overflow:auto;padding:10px}
+    .section-item{border:1px solid var(--border);background:#fff;border-radius:15px;padding:12px;text-align:inherit;display:flex;justify-content:space-between;align-items:center;gap:10px;transition:.2s;color:#111827}
+    .section-item:hover,.section-item.active{border-color:rgba(212,175,55,.7);background:#fffaf0}
+    .section-item-title{font-weight:1000;font-size:13px}
+    .section-item-meta{color:var(--muted);font-size:11px;margin-top:4px}
+    .count-chip{background:#f1f5f9;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:900;color:#334155}
+
+    .section-badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+    .mini-badge{display:inline-flex;align-items:center;gap:5px;border:1px solid #e2e8f0;background:#fff;border-radius:999px;padding:5px 9px;color:#475569;font-size:11px;font-weight:900}
+    .mini-badge.live{border-color:rgba(16,185,129,.35);background:#ecfdf5;color:#047857}
+    .mini-badge.state{border-color:rgba(37,99,235,.25);background:#eff6ff;color:#1d4ed8}
+    .records-summary{display:flex;gap:8px;flex-wrap:wrap;align-items:center;color:var(--muted);font-size:12px;font-weight:850;margin-top:8px}
+    .soft-note{margin:12px 16px 0;padding:11px 13px;border:1px dashed #f0c86b;background:#fffaf0;border-radius:14px;color:#7c4a03;font-size:12px;font-weight:850;line-height:1.7}
+    .table-wrap.compact table{min-width:720px}
+
+    .modal{position:fixed;inset:0;background:rgba(15,23,42,.58);display:none;align-items:center;justify-content:center;z-index:50;padding:20px;backdrop-filter:blur(8px)}
+    .modal.show{display:flex}
+    .modal-card{width:100%;max-width:780px;max-height:90vh;overflow:auto;background:#fff;border-radius:24px;padding:0;box-shadow:0 30px 90px rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.3)}
+    .modal-head{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:18px 20px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,#fff,#fbfdff)}
+    .modal-head h3{margin:0;color:#111827;font-size:18px;font-weight:1000}
+    .modal-body{padding:20px}
+    .modal-actions{display:flex;gap:10px;margin-top:16px}
+    .modal-close{background:#f1f5f9;color:#0f172a;border:0;border-radius:12px;padding:8px 12px;cursor:pointer;font-weight:1000}
+
+    .toast-stack{position:fixed;bottom:18px;z-index:80;display:flex;flex-direction:column;gap:10px;max-width:min(420px,calc(100vw - 32px))}
+    html[dir="rtl"] .toast-stack{left:18px}
+    html[dir="ltr"] .toast-stack{right:18px}
+    .toast{background:#111827;color:#fff;border-radius:16px;padding:13px 14px;box-shadow:0 16px 40px rgba(15,23,42,.22);display:flex;gap:10px;align-items:flex-start;font-weight:800;font-size:13px;animation:toastIn .22s ease;border:1px solid rgba(255,255,255,.08)}
+    .toast.success{background:#064e3b}.toast.error{background:#7f1d1d}.toast.warning{background:#78350f}
+    @keyframes toastIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+    .loader{position:fixed;inset:0;background:rgba(248,250,252,.72);display:none;align-items:center;justify-content:center;z-index:70;backdrop-filter:blur(4px)}
+    .loader.show{display:flex}
+    .spinner{width:50px;height:50px;border-radius:50%;border:5px solid #e2e8f0;border-top-color:var(--gold);animation:spin .75s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    .mobile-menu{display:none}
+    .kbd{background:#f1f5f9;border:1px solid #e2e8f0;border-radius:7px;padding:2px 6px;color:#475569;font-size:11px;font-weight:900}
+
+    @media(max-width:1100px){
+      .cards{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .data-layout{grid-template-columns:1fr}
+      .section-list{max-height:none}
+    }
+
+    .perm-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:10px}
+    .perm-item{display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid var(--border);border-radius:12px;background:#f8fafc;font-weight:800;color:var(--text);cursor:pointer}
+    .perm-item input{width:16px;height:16px;accent-color:var(--gold)}
+    @media(max-width:900px){
+      :root{--sidebar:280px}
+      .login-shell{grid-template-columns:1fr}.login-hero{display:none}.login-card{padding:28px}
+      .mobile-menu{display:inline-flex}
+      .sidebar{transform:translateX(110%);transition:.24s}
+      html[dir="ltr"] .sidebar{transform:translateX(-110%)}
+      body.sidebar-open .sidebar{transform:translateX(0)}
+      html[dir="rtl"] .main,html[dir="ltr"] .main{margin:0}
+      .main{padding:14px}
+      .topbar{top:8px;border-radius:18px}
+      .section-head{align-items:flex-start;flex-direction:column}
+      .grid2,.grid3,.grid4{grid-template-columns:1fr}
+      .modal-actions{flex-direction:column}
+    }
+    @media(max-width:640px){
+      .cards{grid-template-columns:1fr}
+      .topbar{align-items:flex-start;flex-direction:column}
+      .topbar-actions{width:100%}.topbar-actions .btn,.topbar-actions button{flex:1}
+      .filters{flex-direction:column;align-items:stretch}.search-input,.select{width:100%;min-width:0}
+      table{min-width:680px}
+    }
+  </style>
+</head>
+<body>
+  <section id="login" class="login">
+    <div class="login-shell">
+      <div class="login-hero">
+        <div>
+          <div class="hero-badge">BQ</div>
+          <h1 class="hero-title" data-i18n="loginHeroTitle">لوحة تحكم ذكية لإدارة بن قزامل</h1>
+          <p class="hero-subtitle" data-i18n="loginHeroDesc">واجهة احترافية لإدارة المستخدمين، الصلاحيات، بيانات الواجهة، النسخ الاحتياطية ومراقبة النظام من مكان واحد.</p>
+          <div class="hero-pills">
+            <span class="hero-pill" data-i18n="pillUsers">إدارة المستخدمين</span>
+            <span class="hero-pill" data-i18n="pillData">تحكم كامل في البيانات</span>
+            <span class="hero-pill" data-i18n="pillBackup">نسخ واسترجاع</span>
+          </div>
+        </div>
+        <div class="muted" style="color:#94a3b8" data-i18n="loginFooter">Admin Pro • Secure PostgreSQL Dashboard</div>
+      </div>
+      <div class="login-card">
+        <div class="brand"><div class="logo">BQ</div><div><h2 data-i18n="loginTitle">تسجيل دخول الأدمن</h2><div class="muted" data-i18n="loginSubtitle">أدخل بيانات المسؤول للمتابعة</div></div></div>
+        <div id="loginErr" class="alert alert-error"></div>
+        <div class="field"><label data-i18n="email">البريد الإلكتروني</label><input id="loginEmail" type="email" value="admin@binqazamel.ae" class="ltr" autocomplete="username"></div>
+        <div class="field"><label data-i18n="password">كلمة المرور</label><input id="loginPass" type="password" value="1234" class="ltr" autocomplete="current-password"></div>
+        <button id="loginBtn" class="btn btn-primary" style="width:100%;padding:13px" onclick="loginAdmin()"><span>🔐</span><span data-i18n="loginBtn">دخول لوحة التحكم</span></button>
+        <button class="btn btn-outline" style="width:100%;margin-top:10px" onclick="toggleLanguage()"><span>🌐</span><span id="loginLangBtn">English</span></button>
+      </div>
+    </div>
+  </section>
+
+  <section id="app" class="layout">
+    <aside class="sidebar" id="sidebar">
+      <div class="side-brand">
+        <div class="logo">BQ</div>
+        <div>
+          <h2 class="side-title">BQ Admin Pro</h2>
+          <div class="side-subtitle" data-i18n="sideSubtitle">نظام الإدارة المتقدم</div>
+        </div>
+      </div>
+      <div class="side-user-card">
+        <div class="avatar" id="userAvatar">A</div>
+        <div style="min-width:0">
+          <div id="sideUser" class="side-user"></div>
+          <div id="sideRole" class="side-role"></div>
+        </div>
+      </div>
+      <div class="nav">
+        <button class="active" data-page="overview" onclick="showPage('overview',this)"><span class="nav-icon">📊</span><span data-i18n="navOverview">نظرة عامة</span></button>
+        <button data-page="users" onclick="showPage('users',this)"><span class="nav-icon">👥</span><span data-i18n="navUsers">أكسيس الداشبورد والصلاحيات</span></button>
+        <button data-page="frontendUsers" onclick="showPage('frontendUsers',this)"><span class="nav-icon">🧑‍💼</span><span>مستخدمو الواجهة</span></button>
+        <button data-page="data" onclick="showPage('data',this)"><span class="nav-icon">🗂️</span><span data-i18n="navData">بيانات الواجهة</span></button>
+        <button data-page="backup" onclick="showPage('backup',this)"><span class="nav-icon">💾</span><span data-i18n="navBackup">النسخ والاسترجاع</span></button>
+        <button data-page="monitor" onclick="showPage('monitor',this)"><span class="nav-icon">📡</span><span data-i18n="navMonitor">مراقبة النظام</span></button>
+        <button class="logout-btn" onclick="logoutAdmin()"><span class="nav-icon">🚪</span><span data-i18n="logout">تسجيل خروج</span></button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div style="display:flex;align-items:center;gap:12px">
+          <button class="btn btn-outline icon-btn mobile-menu" onclick="toggleSidebar()">☰</button>
+          <div>
+            <h1 id="pageTitle" data-i18n="pageOverview">لوحة التحكم</h1>
+            <div class="breadcrumb"><span data-i18n="breadcrumbHome">الرئيسية</span> / <span id="breadcrumbCurrent" data-i18n="navOverview">نظرة عامة</span></div>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <button class="btn btn-outline" onclick="refreshCurrentPage()"><span>↻</span><span data-i18n="refresh">تحديث</span></button>
+          <button class="lang-toggle" onclick="toggleLanguage()"><span>🌐</span> <span id="langBtn">EN</span></button>
+        </div>
+      </div>
+
+      <section id="overview" class="page active">
+        <div class="section-head">
+          <div><h2 data-i18n="overviewTitle">نظرة عامة على النظام</h2><p data-i18n="overviewDesc">مؤشرات سريعة عن المستخدمين والبيانات والنشاط الأخير.</p></div>
+        </div>
+        <div id="overviewCards" class="cards"></div>
+        <div class="grid2">
+          <div class="panel">
+            <div class="panel-header"><div><h3 class="panel-title" data-i18n="latestActivities">آخر الأنشطة</h3><div class="panel-subtitle" data-i18n="latestActivitiesDesc">آخر تحديثات النظام والمستخدمين</div></div></div>
+            <div class="table-wrap"><table><thead><tr><th data-i18n="action">الإجراء</th><th data-i18n="source">المصدر</th><th data-i18n="status">الحالة</th><th data-i18n="user">المستخدم</th><th data-i18n="time">الوقت</th></tr></thead><tbody id="logsBody"></tbody></table></div>
+          </div>
+          <div class="panel">
+            <div class="panel-header"><div><h3 class="panel-title" data-i18n="sectionsSummary">ملخص أقسام البيانات</h3><div class="panel-subtitle" data-i18n="sectionsSummaryDesc">أهم الأقسام الموجودة في الواجهة</div></div></div>
+            <div id="overviewSections" class="section-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="users" class="page">
+        <div class="section-head">
+          <div><h2 data-i18n="usersTitle">أكسيس الداشبورد والصلاحيات</h2><p data-i18n="usersDesc">إضافة وتعديل وتعطيل حسابات دخول لوحة الأدمن فقط، بدون أي ارتباط بمستخدمي الواجهة.</p></div>
+          <button class="btn btn-primary" onclick="openUserModal()"><span>➕</span><span data-i18n="addUser">إضافة أكسيس</span></button>
+        </div>
+        <div class="filters">
+          <input id="userSearch" class="search-input" oninput="renderUsers()" data-i18n-placeholder="searchUsers" placeholder="ابحث بالاسم أو البريد...">
+          <select id="roleFilter" class="select" onchange="renderUsers()">
+            <option value="" data-i18n="allRoles">كل الأدوار</option>
+            <option value="super_admin">مالك النظام</option>
+            <option value="admin" data-i18n="roleAdmin">مسؤول لوحة التحكم</option>
+            <option value="viewer">مشاهدة فقط</option>
+          </select>
+          <select id="statusFilter" class="select" onchange="renderUsers()">
+            <option value="" data-i18n="allStatus">كل الحالات</option>
+            <option value="active" data-i18n="active">نشط</option>
+            <option value="disabled" data-i18n="disabled">معطل</option>
+          </select>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><div><h3 class="panel-title" data-i18n="usersList">قائمة أكسيس الداشبورد</h3><div class="panel-subtitle"><span id="usersCount">0</span> <span data-i18n="record">سجل</span></div></div></div>
+          <div class="table-wrap"><table><thead><tr><th data-i18n="name">الاسم</th><th data-i18n="email">البريد</th><th data-i18n="role">الدور</th><th data-i18n="department">القسم</th><th data-i18n="status">الحالة</th><th data-i18n="actions">إجراءات</th></tr></thead><tbody id="usersBody"></tbody></table></div>
+        </div>
+      </section>
+
+      <section id="frontendUsers" class="page">
+        <div class="section-head">
+          <div><h2>مستخدمو الواجهة</h2><p>إدارة حسابات المدير والمحاسبين والبائعين الخاصة بواجهة التشغيل فقط. هذه الحسابات منفصلة تمامًا عن أكسيس الداشبورد.</p></div>
+          <button class="btn btn-primary" onclick="openFrontendUserModal()"><span>➕</span><span>إضافة مستخدم واجهة</span></button>
+        </div>
+        <div class="filters">
+          <input id="frontendUserSearch" class="search-input" oninput="renderFrontendUsers()" placeholder="ابحث بالاسم أو البريد...">
+          <select id="frontendRoleFilter" class="select" onchange="renderFrontendUsers()">
+            <option value="">كل الأدوار</option>
+            <option value="admin">مدير</option>
+            <option value="accountant">محاسب</option>
+            <option value="seller">بائع</option>
+          </select>
+          <select id="frontendStatusFilter" class="select" onchange="renderFrontendUsers()">
+            <option value="">كل الحالات</option>
+            <option value="active">نشط</option>
+            <option value="disabled">معطل</option>
+          </select>
+        </div>
+        <div class="notice" style="margin-bottom:14px">
+          هذه القائمة هي التي تظهر في شاشة اختيار القسم في <strong>frontend-updated.html</strong>. أكسيس مالك النظام لا يظهر هنا ولا يدخل الواجهة.
+        </div>
+        <div class="panel">
+          <div class="panel-header"><div><h3 class="panel-title">قائمة مستخدمي الواجهة</h3><div class="panel-subtitle"><span id="frontendUsersCount">0</span> سجل</div></div></div>
+          <div class="table-wrap"><table><thead><tr><th>الاسم</th><th>البريد</th><th>الدور</th><th>القسم</th><th>الحالة</th><th>إجراءات</th></tr></thead><tbody id="frontendUsersBody"></tbody></table></div>
+        </div>
+      </section>
+
+      <section id="data" class="page">
+        <div class="section-head">
+          <div><h2 data-i18n="dataTitle">التحكم في بيانات الواجهة</h2><p data-i18n="dataDesc">اختيار قسم، تعديل العناصر، حفظ JSON، أو إعادة البيانات الافتراضية.</p></div>
+          <div class="toolbar"><button class="btn btn-outline" onclick="downloadSection()"><span>⬇️</span><span data-i18n="exportSection">تصدير القسم</span></button><button class="btn btn-outline" onclick="downloadCsv()"><span>📊</span><span data-i18n="exportCsv">تصدير CSV</span></button><button class="btn btn-outline" onclick="document.getElementById('importSectionFile').click()"><span>📤</span><span data-i18n="importJson">استيراد JSON</span></button><button class="btn btn-outline" onclick="syncDatabase()"><span>🔁</span><span data-i18n="syncDatabase">مزامنة قاعدة البيانات</span></button><input id="importSectionFile" type="file" accept=".json,application/json" class="hidden" onchange="importSectionJson(event)"></div>
+        </div>
+        <div class="data-layout">
+          <div class="panel">
+            <div class="panel-header"><div><h3 class="panel-title" data-i18n="sections">الأقسام</h3><div class="panel-subtitle" data-i18n="chooseSection">اختر قسم البيانات</div></div></div>
+            <div id="sectionList" class="section-list"></div>
+          </div>
+          <div>
+            <div class="panel" style="margin-bottom:16px">
+              <div class="panel-header">
+                <div><h3 id="sectionTitle" class="panel-title" data-i18n="section">القسم</h3><div id="sectionMeta" class="panel-subtitle"></div><div id="sectionBadges" class="section-badges"></div></div>
+                <div class="toolbar">
+                  <button id="productAddBtn" class="btn btn-primary btn-sm" onclick="openProductModal()">➕ <span data-i18n="addProduct">إضافة منتج</span></button>
+                  <button class="btn btn-outline btn-sm" onclick="openRecordModal()">✏️ <span data-i18n="addRecord">إضافة عنصر</span></button>
+                  <button class="btn btn-warning btn-sm" onclick="saveJsonEditor()">💾 <span data-i18n="saveJson">حفظ JSON</span></button>
+                  <button class="btn btn-danger btn-sm" onclick="resetSection()">🔄 <span data-i18n="reset">إعادة تعيين</span></button>
+                </div>
+              </div>
+              <div class="filters" style="box-shadow:none;border:0;border-radius:0;margin:0;border-bottom:1px solid var(--border)">
+                <input id="recordSearch" class="search-input" oninput="renderRecords()" data-i18n-placeholder="searchRecords" placeholder="ابحث داخل القسم...">
+                <button class="btn btn-outline" onclick="copyJson()">📋 <span data-i18n="copyJson">نسخ JSON</span></button>
+                <button class="btn btn-outline" onclick="formatJsonEditor()">✨ <span data-i18n="formatJson">تنسيق JSON</span></button>
+              </div>
+              <div id="sectionLiveNote" class="soft-note hidden"></div>
+              <div id="recordStats" class="records-summary" style="padding:0 16px 10px"></div>
+              <div class="table-wrap compact"><table><thead id="recordsHead"></thead><tbody id="recordsBody"></tbody></table></div>
+            </div>
+            <div class="panel">
+              <div class="panel-header"><div><h3 class="panel-title" data-i18n="jsonEditor">محرر JSON</h3><div class="panel-subtitle" data-i18n="jsonEditorDesc">تعديل مباشر متقدم للبيانات</div></div></div>
+              <div style="padding:16px"><textarea id="jsonEditor" class="json-editor" data-i18n-placeholder="jsonPlaceholder" placeholder="محرر JSON كامل..."></textarea></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="backup" class="page">
+        <div class="section-head"><div><h2 data-i18n="backupTitle">النسخ الاحتياطية والاسترجاع</h2><p data-i18n="backupDesc">حمّل نسخة من بيانات النظام أو استرجع نسخة JSON محفوظة.</p></div></div>
+        <div class="grid2">
+          <div class="card"><div class="metric"><div><h3 data-i18n="downloadBackupTitle">تحميل نسخة احتياطية</h3><div class="val">JSON</div><div class="card-foot" data-i18n="downloadBackupDesc">تنزيل بيانات النظام الحالية في ملف واحد.</div></div><div class="metric-icon">📥</div></div><button class="btn btn-primary" onclick="downloadBackup()" style="width:100%;margin-top:16px" data-i18n="downloadBackup">تحميل النسخة</button></div>
+          <div class="card"><div class="metric"><div><h3 data-i18n="restoreBackupTitle">استرجاع من ملف</h3><div class="val">Restore</div><div class="card-foot" data-i18n="restoreBackupDesc">استرجاع أقسام البيانات من ملف احتياطي.</div></div><div class="metric-icon">📤</div></div><input type="file" id="restoreFile" accept=".json,application/json" style="margin:16px 0 10px;width:100%"><button class="btn btn-warning" onclick="restoreBackup()" style="width:100%" data-i18n="restoreBackup">استرجاع</button></div>
+        </div>
+      </section>
+
+      <section id="monitor" class="page">
+        <div class="section-head"><div><h2 data-i18n="monitorTitle">مراقبة النظام</h2><p data-i18n="monitorDesc">مؤشرات تشغيل السيرفر والذاكرة والطلبات وسجلات النشاط.</p></div></div>
+        <div id="monitorCards" class="cards"></div>
+        <div class="panel">
+          <div class="panel-header">
+            <div><h3 class="panel-title" data-i18n="activityLogs">سجلات النشاط</h3><div class="panel-subtitle" data-i18n="activityLogsDesc">أحدث العمليات المسجلة</div></div>
+            <div id="monitorFilterStats" class="records-summary"></div>
+          </div>
+          <div class="filters monitor-filters" style="box-shadow:none;border:0;border-radius:0;margin:0;border-bottom:1px solid var(--border)">
+            <select id="monitorUserFilter" class="select" onchange="loadMonitor()">
+              <option value="" data-i18n="allUsers">كل المستخدمين</option>
+            </select>
+            <select id="monitorSourceFilter" class="select" onchange="loadMonitor()">
+              <option value="" data-i18n="allSources">كل المصادر</option>
+              <option value="admin" data-i18n="sourceAdmin">الأدمن</option>
+              <option value="frontend" data-i18n="sourceFrontend">الواجهة</option>
+              <option value="api" data-i18n="sourceApi">API</option>
+              <option value="server" data-i18n="sourceServer">السيرفر</option>
+            </select>
+            <select id="monitorStatusFilter" class="select" onchange="loadMonitor()">
+              <option value="" data-i18n="allLevels">كل الحالات</option>
+              <option value="info" data-i18n="okOnly">الناجحة فقط</option>
+              <option value="error" data-i18n="errorOnly">الأخطاء فقط</option>
+            </select>
+            <input id="monitorSearch" class="search-input" data-i18n-placeholder="searchLogs" placeholder="ابحث في الأحداث..." oninput="debouncedLoadMonitor()">
+            <button class="btn btn-outline" onclick="resetMonitorFilters()">🔄 <span data-i18n="resetFilters">إعادة الفلاتر</span></button>
+          </div>
+          <div class="table-wrap"><table><thead><tr><th data-i18n="action">الإجراء</th><th data-i18n="source">المصدر</th><th data-i18n="status">الحالة</th><th data-i18n="user">المستخدم</th><th data-i18n="time">الوقت</th></tr></thead><tbody id="logsBody2"></tbody></table></div>
+        </div>
+      </section>
+    </main>
+  </section>
+
+  <div id="userModal" class="modal">
+    <div class="modal-card">
+      <div class="modal-head"><h3 id="userModalTitle" data-i18n="addUser">إضافة أكسيس</h3><button class="modal-close" onclick="closeUserModal()">✕</button></div>
+      <div class="modal-body">
+        <form onsubmit="saveUser(event)">
+          <div class="grid2"><div class="field"><label data-i18n="name">الاسم</label><input id="uName" type="text" required></div><div class="field"><label data-i18n="email">البريد الإلكتروني</label><input id="uEmail" type="email" required class="ltr"></div></div>
+          <div class="grid2"><div class="field"><label data-i18n="role">الدور</label><select id="uRole" onchange="roleChanged()" required><option value="super_admin">مالك النظام</option><option value="admin" data-i18n="roleAdmin">مسؤول لوحة التحكم</option><option value="viewer">مشاهدة فقط</option></select></div><div class="field"><label data-i18n="department">القسم</label><input id="uDept" type="text" required></div></div>
+          <div class="grid2"><div class="field"><label><span data-i18n="password">كلمة المرور</span> <small id="passHint" class="muted"></small></label><input id="uPass" type="password" class="ltr"></div><div class="field"><label data-i18n="status">الحالة</label><select id="uActive"><option value="true" data-i18n="active">نشط</option><option value="false" data-i18n="disabled">معطل</option></select></div></div>
+          <div class="success-msg"><strong data-i18n="permissionsPreview">ملخص الصلاحيات:</strong> <span id="permissionPreview"></span></div>
+          <div class="field">
+            <label>صلاحيات هذا الأكسيس داخل لوحة الأدمن</label>
+            <div class="perm-grid">
+              <label class="perm-item"><input type="checkbox" id="permOverview"> نظرة عامة</label>
+              <label class="perm-item"><input type="checkbox" id="permManageUsers"> إدارة أكسيس الداشبورد</label>
+              <label class="perm-item"><input type="checkbox" id="permDataControl"> بيانات الواجهة</label>
+              <label class="perm-item"><input type="checkbox" id="permBackup"> النسخ والاسترجاع</label>
+              <label class="perm-item"><input type="checkbox" id="permMonitor"> مراقبة النظام</label>
+            </div>
+          </div>
+          <input type="hidden" id="userId">
+          <div class="modal-actions"><button type="submit" class="btn btn-primary" style="flex:1">💾 <span data-i18n="save">حفظ</span></button><button type="button" class="btn btn-light" style="flex:1" onclick="closeUserModal()" data-i18n="cancel">إلغاء</button></div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div id="frontendUserModal" class="modal">
+    <div class="modal-card">
+      <div class="modal-head"><h3 id="frontendUserModalTitle">إضافة مستخدم واجهة</h3><button class="modal-close" onclick="closeFrontendUserModal()">✕</button></div>
+      <div class="modal-body">
+        <form onsubmit="saveFrontendUser(event)">
+          <div class="grid2">
+            <div class="field"><label>الاسم</label><input id="fuName" type="text" required></div>
+            <div class="field"><label>البريد الإلكتروني</label><input id="fuEmail" type="email" required class="ltr"></div>
+          </div>
+          <div class="grid2">
+            <div class="field"><label>الدور داخل الواجهة</label><select id="fuRole" onchange="frontendRoleChanged()" required><option value="admin">مدير</option><option value="accountant">محاسب</option><option value="seller">بائع</option></select></div>
+            <div class="field"><label>القسم</label><input id="fuDept" type="text" required></div>
+          </div>
+          <div class="grid2">
+            <div class="field"><label>كلمة المرور <small id="fuPassHint" class="muted"></small></label><input id="fuPass" type="password" class="ltr"></div>
+            <div class="field"><label>الحالة</label><select id="fuActive"><option value="true">نشط</option><option value="false">معطل</option></select></div>
+          </div>
+          <div class="success-msg"><strong>تنبيه:</strong> هذا المستخدم سيظهر في الواجهة فقط، ولن يكون له صلاحية دخول لوحة الأدمن.</div>
+          <input type="hidden" id="frontendUserId">
+          <div class="modal-actions"><button type="submit" class="btn btn-primary" style="flex:1">💾 حفظ</button><button type="button" class="btn btn-light" style="flex:1" onclick="closeFrontendUserModal()">إلغاء</button></div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div id="productModal" class="modal">
+    <div class="modal-card">
+      <div class="modal-head"><h3 id="productModalTitle" data-i18n="addProduct">إضافة منتج</h3><button class="modal-close" onclick="closeProductModal()">✕</button></div>
+      <div class="modal-body">
+        <form onsubmit="saveProduct(event)">
+          <div class="grid2"><div class="form-group"><label data-i18n="productName">اسم المنتج *</label><input id="prodName" type="text" required></div><div class="form-group"><label data-i18n="code">الكود *</label><input id="prodCode" type="text" required></div></div>
+          <div class="grid4"><div class="form-group"><label data-i18n="category">الفئة</label><input id="prodCategory" type="text" data-i18n-placeholder="categoryExample" placeholder="مثال: أثاث"></div><div class="form-group"><label data-i18n="buyPrice">سعر الشراء</label><input id="prodBuyPrice" type="number" step="0.01" placeholder="0.00"></div><div class="form-group"><label data-i18n="sellPrice">سعر البيع</label><input id="prodSellPrice" type="number" step="0.01" placeholder="0.00"></div><div class="form-group"><label data-i18n="stockQty">الكمية بالمخزن</label><input id="prodStockQty" type="number" step="1" placeholder="0"></div></div>
+          <div class="form-group"><label data-i18n="notes">ملاحظات</label><textarea id="prodNotes" data-i18n-placeholder="notesPlaceholder" placeholder="ملاحظات إضافية..."></textarea></div>
+          <div id="productSuccess" class="success-msg hidden" data-i18n="productAdded">تم حفظ المنتج بنجاح ✓</div>
+          <div class="modal-actions"><button id="productSubmitBtn" type="submit" class="btn btn-primary" style="flex:1">➕ <span id="productSubmitText" data-i18n="addProduct">إضافة منتج</span></button><button type="button" class="btn btn-light" style="flex:1" onclick="closeProductModal()" data-i18n="cancel">إلغاء</button></div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div id="recordModal" class="modal">
+    <div class="modal-card">
+      <div class="modal-head"><h3 id="recordTitle" data-i18n="editRecord">تعديل عنصر</h3><button class="modal-close" onclick="closeRecordModal()">✕</button></div>
+      <div class="modal-body"><label style="font-weight:900;display:block;margin-bottom:8px">JSON</label><textarea id="recordJson" class="json-editor" data-i18n-placeholder="recordJsonPlaceholder" placeholder="أدخل JSON هنا..."></textarea><div class="modal-actions"><button class="btn btn-primary" style="flex:1" onclick="saveRecord()">💾 <span data-i18n="save">حفظ</span></button><button class="btn btn-light" style="flex:1" onclick="closeRecordModal()" data-i18n="cancel">إلغاء</button></div></div>
+    </div>
+  </div>
+
+  <div id="loader" class="loader"><div class="spinner"></div></div>
+  <div id="toastStack" class="toast-stack"></div>
+
+  <script>
+    const API_BASE = window.location.protocol === 'file:' ? 'http://localhost:5001/api' : `${window.location.origin}/api`;
+    let token = localStorage.getItem('token');
+    let adminUser = safeJson(localStorage.getItem('adminUser'));
+    let currentLang = localStorage.getItem('lang') || 'ar';
+    let currentPage = 'overview';
+    let currentSectionKey = '';
+    let currentSectionValue = {};
+    let editingRecordIndex = null;
+    let editingProductIndex = null;
+    let allUsers = [];
+    let allFrontendUsers = [];
+    let allSections = [];
+    let isLoading = false;
+
+    const PAGE_PERMISSIONS = {
+      overview: 'overview',
+      users: 'manageUsers',
+      frontendUsers: 'manageUsers',
+      data: 'dataControl',
+      backup: 'backup',
+      monitor: 'monitor'
+    };
+
+    function currentPermissions(){
+      return adminUser?.permissions || {};
+    }
+
+    function hasPageAccess(page){
+      if(!adminUser) return false;
+      if(adminUser.role === 'super_admin') return true;
+      const key = PAGE_PERMISSIONS[page];
+      if(!key) return true;
+      return !!currentPermissions()[key];
+    }
+
+    function firstAllowedPage(){
+      return ['overview','users','frontendUsers','data','backup','monitor'].find(hasPageAccess) || 'overview';
+    }
+
+    function updateAccessVisibility(){
+      document.querySelectorAll('.nav button[data-page]').forEach(btn=>{
+        const page = btn.dataset.page;
+        btn.classList.toggle('access-hidden', !hasPageAccess(page));
+      });
+      // Hide page content for unauthorized pages so direct calls cannot leave them visible.
+      document.querySelectorAll('.page').forEach(pageEl=>{
+        pageEl.classList.toggle('access-hidden', !hasPageAccess(pageEl.id));
+      });
+    }
+
+    const FRONTEND_MODULES = ['dashboard','sales','invoice','installments','all-invoices','products','customers','purchases','pur-inst','suppliers','expenses','inventory','reports','employees','payroll','leaves','settings'];
+    const SELLER_MODULES = ['invoice','quotation','installments','sales'];
+    const ROLE_DEPT = { super_admin:'لوحة التحكم', admin:'إدارة الداشبورد', viewer:'مشاهدة فقط' };
+    const ROLE_ORDER = { super_admin: 1, admin: 2, viewer: 3 };
+    const SECTION_ICONS = {bq_products:'📦',bq_sales:'🧾',bq_customers:'👥',bq_suppliers:'🚚',bq_expenses:'💸',bq_purchases:'🛒',bq_installments:'📆',bq_employees:'👔',bq_leaves:'🌴',bq_pur_inst:'🧮',bq_inv_counter:'🔢',bq_qt_counter:'💬'};
+
+    const I18N = {
+      ar:{
+        loginHeroTitle:'لوحة تحكم ذكية لإدارة بن قزامل',loginHeroDesc:'واجهة احترافية لإدارة المستخدمين، الصلاحيات، بيانات الواجهة، النسخ الاحتياطية ومراقبة النظام من مكان واحد.',pillUsers:'إدارة المستخدمين',pillData:'تحكم كامل في البيانات',pillBackup:'نسخ واسترجاع',loginFooter:'Admin Pro • Secure PostgreSQL Dashboard',loginTitle:'تسجيل دخول الأدمن',loginSubtitle:'أدخل بيانات المسؤول للمتابعة',email:'البريد الإلكتروني',password:'كلمة المرور',loginBtn:'دخول لوحة التحكم',sideSubtitle:'نظام الإدارة المتقدم',navOverview:'نظرة عامة',navUsers:'أكسيس الداشبورد والصلاحيات',navData:'بيانات الواجهة',navBackup:'النسخ والاسترجاع',navMonitor:'مراقبة النظام',logout:'تسجيل خروج',pageOverview:'لوحة التحكم',breadcrumbHome:'الرئيسية',refresh:'تحديث',overviewTitle:'نظرة عامة على النظام',overviewDesc:'مؤشرات سريعة عن المستخدمين والبيانات والنشاط الأخير.',latestActivities:'آخر الأنشطة',latestActivitiesDesc:'آخر تحديثات النظام والمستخدمين',sectionsSummary:'ملخص أقسام البيانات',sectionsSummaryDesc:'أهم الأقسام الموجودة في الواجهة',action:'الإجراء',user:'المستخدم',time:'الوقت',usersTitle:'أكسيس الداشبورد والصلاحيات',usersDesc:'إضافة وتعديل وتعطيل حسابات دخول لوحة الأدمن فقط، بدون أي ارتباط بمستخدمي الواجهة.',addUser:'إضافة أكسيس',editUser:'تعديل أكسيس',searchUsers:'ابحث بالاسم أو البريد...',allRoles:'كل الأدوار',allStatus:'كل الحالات',roleAdmin:'مسؤول لوحة التحكم',roleAccountant:'محاسب',roleSeller:'مندوب مبيعات',active:'نشط',disabled:'معطل',usersList:'قائمة أكسيس الداشبورد',record:'سجل',name:'الاسم',role:'الدور',department:'القسم',status:'الحالة',actions:'إجراءات',dataTitle:'التحكم في بيانات الواجهة',dataDesc:'اختيار قسم، تعديل العناصر، حفظ JSON، أو إعادة البيانات الافتراضية.',exportSection:'تصدير القسم',exportCsv:'تصدير CSV',importJson:'استيراد JSON',syncDatabase:'مزامنة قاعدة البيانات',source:'المصدر',sourceTable:'جدول PostgreSQL مباشر',sourceAppState:'بيانات واجهة محفوظة',tableBackedNote:'هذا القسم محفوظ الآن داخل جدول حقيقي في PostgreSQL؛ أي إضافة أو تعديل من هنا يتم تسجيله في قاعدة البيانات مباشرة مع مزامنة نسخة توافقية للواجهة القديمة.',recordsCount:'عدد السجلات',sections:'الأقسام',chooseSection:'اختر قسم البيانات',section:'القسم',addProduct:'إضافة منتج',addRecord:'إضافة عنصر',editRecord:'تعديل عنصر',saveJson:'حفظ JSON',reset:'إعادة تعيين',searchRecords:'ابحث داخل القسم...',copyJson:'نسخ JSON',formatJson:'تنسيق JSON',jsonEditor:'محرر JSON',jsonEditorDesc:'تعديل مباشر متقدم للبيانات',jsonPlaceholder:'محرر JSON كامل...',backupTitle:'النسخ الاحتياطية والاسترجاع',backupDesc:'حمّل نسخة من بيانات النظام أو استرجع نسخة JSON محفوظة.',downloadBackupTitle:'تحميل نسخة احتياطية',downloadBackupDesc:'تنزيل بيانات النظام الحالية في ملف واحد.',downloadBackup:'تحميل النسخة',restoreBackupTitle:'استرجاع من ملف',restoreBackupDesc:'استرجاع أقسام البيانات من ملف احتياطي.',restoreBackup:'استرجاع',monitorTitle:'مراقبة النظام',monitorDesc:'مؤشرات تشغيل السيرفر والذاكرة والطلبات وسجلات النشاط.',activityLogs:'سجلات النشاط',activityLogsDesc:'أحدث العمليات المسجلة',allUsers:'كل المستخدمين',allSources:'كل المصادر',allLevels:'كل الحالات',okOnly:'الناجحة فقط',errorOnly:'الأخطاء فقط',searchLogs:'ابحث في الأحداث أو المسار أو المستخدم...',resetFilters:'إعادة الفلاتر',filteredLogs:'الأحداث المعروضة',permissionsPreview:'ملخص الصلاحيات:',save:'حفظ',cancel:'إلغاء',productName:'اسم المنتج *',code:'الكود *',category:'الفئة',buyPrice:'سعر الشراء',sellPrice:'سعر البيع',notes:'ملاحظات',categoryExample:'مثال: أثاث',notesPlaceholder:'ملاحظات إضافية...',productAdded:'تم حفظ المنتج بنجاح ✓',editProduct:'تعديل منتج',saveProductChanges:'حفظ التعديل',productSaved:'تم حفظ تعديل المنتج ✓',stockQty:'الكمية بالمخزن',recordJsonPlaceholder:'أدخل JSON هنا...',users:'المستخدمين',dataSections:'أقسام البيانات',lastUpdate:'آخر تحديث',requests:'الطلبات',memory:'الذاكرة',uptime:'وقت التشغيل',database:'قاعدة البيانات',noData:'لا توجد بيانات',loading:'جاري التحميل...',loginSuccess:'تم تسجيل الدخول بنجاح',loginFailed:'فشل تسجيل الدخول',saved:'تم الحفظ بنجاح',deleted:'تم الحذف بنجاح',updated:'تم التحديث بنجاح',copied:'تم النسخ',invalidJson:'JSON غير صحيح',confirmDelete:'هل تريد حذف هذا العنصر؟',confirmUserDelete:'حذف أكسيس الداشبورد نهائيًا؟',confirmReset:'إعادة القسم لقيمته الافتراضية؟',confirmRestore:'سيتم استرجاع بيانات النظام من الملف. هل أنت متأكد؟',chooseFile:'اختر ملف JSON أولاً',passwordRequired:'مطلوبة',passwordOptional:'اختياري عند التعديل',toggleStatus:'تغيير الحالة',resetPassword:'تغيير كلمة المرور',edit:'تعديل',delete:'حذف',enable:'تفعيل',disable:'تعطيل',newPasswordPrompt:'أدخل كلمة المرور الجديدة:',fillRequired:'املأ الحقول المطلوبة',adminModules:'كل صلاحيات النظام',accountantModules:'صلاحيات الحسابات والتقارير',sellerModules:'صلاحيات المبيعات والفواتير',rowsShown:'المعروض',of:'من',key:'المفتاح',value:'القيمة',count:'العدد',type:'النوع',updatedAt:'آخر تحديث',updatedBy:'آخر تعديل بواسطة',systemReady:'النظام يعمل',sourceAdmin:'الأدمن',sourceFrontend:'الواجهة',sourceApi:'API',sourceServer:'السيرفر',levelInfo:'ناجح',levelError:'خطأ',sectionExported:'تم تصدير القسم',backupDownloaded:'تم تحميل النسخة',restoreDone:'تم الاسترجاع',syncDone:'تمت مزامنة قاعدة البيانات',confirmSync:'سيتم مزامنة بيانات الواجهة القديمة إلى جداول PostgreSQL وتحديث المرآة التوافقية. هل تريد المتابعة؟',langName:'English',langBtn:'EN'},
+        en:{
+        loginHeroTitle:'Smart Admin Dashboard for Bin Qazamel',loginHeroDesc:'A professional dashboard to manage users, permissions, frontend data, backups, and system monitoring from one place.',pillUsers:'User management',pillData:'Full data control',pillBackup:'Backup & restore',loginFooter:'Admin Pro • Secure PostgreSQL Dashboard',loginTitle:'Admin Login',loginSubtitle:'Enter admin credentials to continue',email:'Email address',password:'Password',loginBtn:'Open Dashboard',sideSubtitle:'Advanced management system',navOverview:'Overview',navUsers:'Users & Permissions',navData:'Frontend Data',navBackup:'Backup & Restore',navMonitor:'System Monitor',logout:'Logout',pageOverview:'Dashboard',breadcrumbHome:'Home',refresh:'Refresh',overviewTitle:'System overview',overviewDesc:'Quick indicators for users, data, and recent activity.',latestActivities:'Latest activities',latestActivitiesDesc:'Latest system and user updates',sectionsSummary:'Data sections summary',sectionsSummaryDesc:'Main sections available in the frontend',action:'Action',user:'User',time:'Time',usersTitle:'Dashboard Access & Permissions',usersDesc:'Add, edit, and disable admin dashboard access accounts only. These are separate from frontend users.',addUser:'Add Access',editUser:'Edit Access',searchUsers:'Search by name or email...',allRoles:'All roles',allStatus:'All statuses',roleAdmin:'Dashboard Admin',roleAccountant:'Accountant',roleSeller:'Sales Representative',active:'Active',disabled:'Disabled',usersList:'Dashboard access list',record:'record',name:'Name',role:'Role',department:'Department',status:'Status',actions:'Actions',dataTitle:'Frontend Data Control',dataDesc:'Choose a section, edit records, save JSON, or restore defaults.',exportSection:'Export Section',exportCsv:'Export CSV',importJson:'Import JSON',syncDatabase:'Sync Database',source:'Source',sourceTable:'Live PostgreSQL table',sourceAppState:'Saved frontend data',tableBackedNote:'This section is now stored in a real PostgreSQL table. Any add or edit from here is saved directly to the database, with a compatibility mirror for old frontend screens.',recordsCount:'Records count',sections:'Sections',chooseSection:'Choose data section',section:'Section',addProduct:'Add Product',addRecord:'Add Record',editRecord:'Edit Record',saveJson:'Save JSON',reset:'Reset',searchRecords:'Search inside section...',copyJson:'Copy JSON',formatJson:'Format JSON',jsonEditor:'JSON Editor',jsonEditorDesc:'Advanced direct data editing',jsonPlaceholder:'Full JSON editor...',backupTitle:'Backup & Restore',backupDesc:'Download current system data or restore a saved JSON backup.',downloadBackupTitle:'Download backup',downloadBackupDesc:'Download current system data in one file.',downloadBackup:'Download backup',restoreBackupTitle:'Restore from file',restoreBackupDesc:'Restore data sections from a backup file.',restoreBackup:'Restore',monitorTitle:'System Monitor',monitorDesc:'Server uptime, memory, requests, and activity logs.',activityLogs:'Activity logs',activityLogsDesc:'Latest recorded operations',allUsers:'All users',allSources:'All sources',allLevels:'All statuses',okOnly:'Successful only',errorOnly:'Errors only',searchLogs:'Search events, path, or user...',resetFilters:'Reset filters',filteredLogs:'Visible events',permissionsPreview:'Permissions summary:',save:'Save',cancel:'Cancel',productName:'Product name *',code:'Code *',category:'Category',buyPrice:'Buy price',sellPrice:'Sell price',notes:'Notes',categoryExample:'Example: Furniture',notesPlaceholder:'Additional notes...',productAdded:'Product saved successfully ✓',editProduct:'Edit Product',saveProductChanges:'Save changes',productSaved:'Product changes saved ✓',stockQty:'Stock quantity',recordJsonPlaceholder:'Enter JSON here...',users:'Users',dataSections:'Data sections',lastUpdate:'Last update',requests:'Requests',memory:'Memory',uptime:'Uptime',database:'Database',noData:'No data',loading:'Loading...',loginSuccess:'Logged in successfully',loginFailed:'Login failed',saved:'Saved successfully',deleted:'Deleted successfully',updated:'Updated successfully',copied:'Copied',invalidJson:'Invalid JSON',confirmDelete:'Delete this record?',confirmUserDelete:'Delete this dashboard access permanently?',confirmReset:'Reset this section to default values?',confirmRestore:'System data will be restored from this file. Are you sure?',chooseFile:'Choose a JSON file first',passwordRequired:'required',passwordOptional:'optional when editing',toggleStatus:'Toggle status',resetPassword:'Reset password',edit:'Edit',delete:'Delete',enable:'Enable',disable:'Disable',newPasswordPrompt:'Enter the new password:',fillRequired:'Fill required fields',adminModules:'All system permissions',accountantModules:'Accounting and reports permissions',sellerModules:'Sales and invoice permissions',rowsShown:'Showing',of:'of',key:'Key',value:'Value',count:'Count',type:'Type',updatedAt:'Updated at',updatedBy:'Updated by',systemReady:'System ready',sourceAdmin:'Admin',sourceFrontend:'Frontend',sourceApi:'API',sourceServer:'Server',levelInfo:'OK',levelError:'Error',sectionExported:'Section exported',backupDownloaded:'Backup downloaded',restoreDone:'Restore complete',syncDone:'Database synchronized',confirmSync:'Old frontend state will be migrated into PostgreSQL tables and the compatibility mirror will be updated. Continue?',langName:'العربية',langBtn:'AR'}
+    };
+
+    function safeJson(text){try{return text?JSON.parse(text):null}catch{return null}}
+    function t(key){return (I18N[currentLang] && I18N[currentLang][key]) || I18N.ar[key] || key}
+    function escapeHtml(value){const div=document.createElement('div');div.textContent=value==null?'':String(value);return div.innerHTML}
+    function truncate(value,len=90){const s=value==null?'':String(value);return s.length>len?s.slice(0,len)+'…':s}
+    function fmtDate(d){if(!d)return '—';try{return new Date(d).toLocaleString(currentLang==='ar'?'ar-EG':'en-US')}catch{return '—'}}
+    function formatBytes(bytes){const n=Number(bytes||0);if(n<1024)return n+' B';if(n<1024*1024)return Math.round(n/1024)+' KB';return Math.round(n/1024/1024)+' MB'}
+    function setLoading(show){isLoading=show;document.getElementById('loader').classList.toggle('show',show)}
+    function showMsg(id,msg){const el=document.getElementById(id);el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),4500)}
+    function toast(msg,type='success'){const stack=document.getElementById('toastStack');const el=document.createElement('div');el.className=`toast ${type}`;el.innerHTML=`<span>${type==='error'?'⚠️':type==='warning'?'⚡':'✅'}</span><span>${escapeHtml(msg)}</span>`;stack.appendChild(el);setTimeout(()=>{el.style.opacity='0';el.style.transform='translateY(8px)';setTimeout(()=>el.remove(),180)},3200)}
+
+    async function api(path, opts = {}) {
+      const res = await fetch(API_BASE + path, {cache:'no-store',...opts,headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`,...(opts.headers||{})}});
+      if(res.status===401){logoutAdmin();return null}
+      const data = await res.json().catch(()=>({}));
+      if(!res.ok)throw new Error(data.error || data.message || `API error: ${res.status}`);
+      return data;
+    }
+
+    function trackActivity(action, details = {}) {
+      try {
+        fetch(API_BASE + '/activity/log', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'X-BQ-Source': 'admin', 'X-BQ-Page': currentPage || 'admin' },
+          body: JSON.stringify({ action, source: 'admin', page: currentPage || 'admin', details })
+        }).catch(() => {});
+      } catch {}
+    }
+
+
+    function applyI18n(){
+      document.documentElement.lang=currentLang;document.documentElement.dir=currentLang==='ar'?'rtl':'ltr';document.body.style.direction=currentLang==='ar'?'rtl':'ltr';
+      document.querySelectorAll('[data-i18n]').forEach(el=>{el.textContent=t(el.dataset.i18n)});
+      document.querySelectorAll('[data-i18n-placeholder]').forEach(el=>{el.placeholder=t(el.dataset.i18nPlaceholder)});
+      document.getElementById('langBtn').textContent=t('langBtn');
+      document.getElementById('loginLangBtn').textContent=t('langName');
+      localStorage.setItem('lang',currentLang);
+      updatePageTitle();
+      updatePermissionPreview();
+      if(currentPage==='monitor' && window.__monitorUsers) populateMonitorUsers(window.__monitorUsers);
+    }
+
+    function toggleLanguage(){currentLang=currentLang==='ar'?'en':'ar';applyI18n();rerenderAll();toast(currentLang==='ar'?'تم تبديل اللغة':'Language changed');trackActivity('تبديل لغة لوحة الأدمن',{language:currentLang})}
+    function toggleSidebar(){document.body.classList.toggle('sidebar-open')}
+    function closeSidebar(){document.body.classList.remove('sidebar-open')}
+
+    async function loginAdmin(){
+      const email=document.getElementById('loginEmail').value.trim();const pass=document.getElementById('loginPass').value;
+      if(!email||!pass)return showMsg('loginErr',t('fillRequired'));
+      try{setLoading(true);document.getElementById('loginBtn').disabled=true;
+        const res=await fetch(API_BASE+'/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password:pass})});
+        const data=await res.json().catch(()=>({}));
+        if(!res.ok||!data.token)throw new Error(data.error||data.message||t('loginFailed'));
+        token=data.token;adminUser=data.user;localStorage.setItem('token',token);localStorage.setItem('adminUser',JSON.stringify(adminUser));toast(t('loginSuccess'));trackActivity('تسجيل دخول لوحة الأدمن',{email});startApp();
+      }catch(e){showMsg('loginErr',e.message)}finally{setLoading(false);document.getElementById('loginBtn').disabled=false}
+    }
+    function logoutAdmin(){token=null;adminUser=null;localStorage.removeItem('token');localStorage.removeItem('adminUser');document.getElementById('app').style.display='none';document.getElementById('login').style.display='flex';closeSidebar()}
+
+    async function startApp(){
+      if(!token||!adminUser){logoutAdmin();return}
+      document.getElementById('login').style.display='none';document.getElementById('app').style.display='block';
+      const email=adminUser.email||'Admin';document.getElementById('sideUser').textContent=email;document.getElementById('sideRole').textContent=roleLabel(adminUser.role||'admin');document.getElementById('userAvatar').textContent=(adminUser.name||email||'A').trim().charAt(0).toUpperCase();
+      updateAccessVisibility();
+      applyI18n();
+      const initialPage = hasPageAccess(currentPage) ? currentPage : firstAllowedPage();
+      showPage(initialPage, document.querySelector(`.nav button[data-page="${initialPage}"]`), true);
+    }
+
+    function showPage(name,btn,silent=false){
+      if(!hasPageAccess(name)){
+        const fallback = firstAllowedPage();
+        if(fallback && fallback !== name){
+          return showPage(fallback, document.querySelector(`.nav button[data-page="${fallback}"]`), true);
+        }
+        return;
+      }
+      const previousPage=currentPage;
+      currentPage=name;
+      updateAccessVisibility();
+      document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+      document.getElementById(name)?.classList.add('active');
+      document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));
+      (btn||document.querySelector(`.nav button[data-page="${name}"]`))?.classList.add('active');
+      updatePageTitle();
+      closeSidebar();
+      refreshCurrentPage(false);
+      if(!silent && previousPage!==name)trackActivity('فتح صفحة داخل الأدمن',{from:previousPage,to:name})
+    }
+    function updatePageTitle(){const map={overview:'navOverview',users:'navUsers',frontendUsers:'مستخدمو الواجهة',data:'navData',backup:'navBackup',monitor:'navMonitor'};const key=map[currentPage];const label=currentPage==='overview'?t('pageOverview'):(I18N.ar[key]?t(key):key);document.getElementById('pageTitle').textContent=label;document.getElementById('breadcrumbCurrent').textContent=label}
+    function refreshCurrentPage(show=true){
+      if(!hasPageAccess(currentPage))return showPage(firstAllowedPage(),null,true);
+      if(show)toast(t('loading'),'warning');
+      if(currentPage==='overview')loadOverview();
+      if(currentPage==='users')loadUsers();
+      if(currentPage==='frontendUsers')loadFrontendUsers();
+      if(currentPage==='data')loadSections().then(()=>currentSectionKey&&loadSection(currentSectionKey));
+      if(currentPage==='backup'){}
+      if(currentPage==='monitor')loadMonitor();
+    }
+    function rerenderAll(){updateAccessVisibility();if(hasPageAccess('overview')){renderOverviewCards(window.__overviewData||{});renderLogs('logsBody',window.__logs||[])}if(hasPageAccess('users'))renderUsers();if(hasPageAccess('data')){renderSectionList();renderRecords()}if(hasPageAccess('monitor'))renderMonitor(window.__monitorStats||{},window.__monitorLogs||[])}
+
+    async function loadOverview(){try{const [data,logs,stats]=await Promise.all([api('/admin/overview'),api('/monitor/logs'),api('/monitor/stats').catch(()=>null)]);window.__overviewData={...(data||{}),...(stats||{})};window.__logs=logs||[];renderOverviewCards(window.__overviewData);renderLogs('logsBody',window.__logs);renderOverviewSections()}catch(e){toast(e.message,'error')}}
+    function renderOverviewCards(data={}){document.getElementById('overviewCards').innerHTML=`
+      ${metricCard('👥',t('users'),data.userCount||data.activeUsers||0,t('systemReady'))}
+      ${metricCard('🗂️',t('dataSections'),data.sectionCount||allSections.length||0,t('systemReady'))}
+      ${metricCard('💾',t('lastUpdate'),data.lastBackup?fmtDate(data.lastBackup):'—',t('updatedAt'))}
+      ${metricCard('📡',t('requests'),data.requestCount||0,t('systemReady'))}`}
+    function metricCard(icon,title,value,foot){return `<div class="card"><div class="metric"><div><h3>${escapeHtml(title)}</h3><div class="val">${escapeHtml(value)}</div><div class="card-foot">${escapeHtml(foot||'')}</div></div><div class="metric-icon">${icon}</div></div></div>`}
+    function logSourceLabel(source){source=String(source||'api').toLowerCase();if(source==='admin')return t('sourceAdmin');if(source==='frontend')return t('sourceFrontend');if(source==='server')return t('sourceServer');return t('sourceApi')}
+    function renderLogs(id,logs=[]){const body=document.getElementById(id);if(!logs.length){body.innerHTML=`<tr><td colspan="5" class="empty">${t('noData')}</td></tr>`;return}body.innerHTML=logs.slice(0,30).map(l=>{const isErr=(l.level==='error')||(Number(l.statusCode)>=400);return `<tr><td><div class="td-main">${escapeHtml(l.action)}</div><div class="td-sub ltr">${escapeHtml(l.method||'')} ${escapeHtml(l.path||'')}</div></td><td><span class="mini-badge ${escapeHtml(l.source||'api')}">${escapeHtml(logSourceLabel(l.source))}</span></td><td><span class="badge ${isErr?'badge-off':'badge-ok'}">${isErr?'● '+t('levelError'):'● '+t('levelInfo')}</span></td><td>${escapeHtml(l.user||'system')}</td><td>${fmtDate(l.timestamp)}</td></tr>`}).join('')}
+    function renderOverviewSections(){const box=document.getElementById('overviewSections');const list=(allSections||[]).slice(0,8);box.innerHTML=list.length?list.map(s=>sectionItemHtml(s,false)).join(''):`<div class="empty">${t('noData')}</div>`}
+
+    async function loadUsers(){if(!hasPageAccess('users'))return;try{allUsers=await api('/admin-access')||[];allUsers.sort((a,b)=>(ROLE_ORDER[a.role]||9)-(ROLE_ORDER[b.role]||9));renderUsers()}catch(e){toast(e.message,'error')}}
+    function roleLabel(role){return role==='super_admin'?'مالك النظام':role==='admin'?'مسؤول لوحة التحكم':role==='viewer'?'مشاهدة فقط':role}
+    function roleBadge(role){return role==='super_admin'?'badge-gold':role==='admin'?'badge-info':'badge-dark'}
+    function renderUsers(){const q=(document.getElementById('userSearch')?.value||'').toLowerCase();const role=document.getElementById('roleFilter')?.value||'';const status=document.getElementById('statusFilter')?.value||'';let rows=allUsers.filter(u=>{const matchQ=(u.name||'').toLowerCase().includes(q)||(u.email||'').toLowerCase().includes(q);const matchRole=!role||u.role===role;const matchStatus=!status||(status==='active'?u.active!==false:u.active===false);return matchQ&&matchRole&&matchStatus});document.getElementById('usersCount').textContent=rows.length;document.getElementById('usersBody').innerHTML=rows.length?rows.map(u=>`<tr><td><div class="td-main">${escapeHtml(u.name)}</div><div class="td-sub">ID: ${escapeHtml(u.id)}</div></td><td class="ltr">${escapeHtml(u.email)}</td><td><span class="badge ${roleBadge(u.role)}">${escapeHtml(roleLabel(u.role))}</span></td><td>${escapeHtml(u.dept||'—')}</td><td><span class="badge ${u.active!==false?'badge-ok':'badge-off'}">${u.active!==false?'● '+t('active'):'● '+t('disabled')}</span></td><td><div class="actions"><button class="btn btn-light btn-sm" title="${t('edit')}" onclick="openUserModal('${u.id}')">✏️</button><button class="btn btn-warning btn-sm" title="${t('resetPassword')}" onclick="resetPassword('${u.id}')">🔑</button><button class="btn btn-outline btn-sm" title="${t('toggleStatus')}" onclick="toggleUser('${u.id}')">${u.active!==false?'⏸️':'▶️'}</button><button class="btn btn-danger btn-sm" title="${t('delete')}" onclick="deleteUser('${u.id}')">🗑️</button></div></td></tr>`).join(''):`<tr><td colspan="6" class="empty">${t('noData')}</td></tr>`}
+
+    function defaultPermissionsForRole(role){
+      if(role==='super_admin')return{overview:true,manageUsers:true,dataControl:true,backup:true,monitor:true};
+      if(role==='admin')return{overview:true,manageUsers:false,dataControl:true,backup:false,monitor:true};
+      return{overview:true,manageUsers:false,dataControl:false,backup:false,monitor:true}
+    }
+    function setPermissionCheckboxes(perms){
+      const p=perms||{};
+      const map={permOverview:'overview',permManageUsers:'manageUsers',permDataControl:'dataControl',permBackup:'backup',permMonitor:'monitor'};
+      Object.entries(map).forEach(([id,key])=>{const el=document.getElementById(id);if(el)el.checked=!!p[key]});
+      updatePermissionPreview();
+    }
+    function readPerms(){return{overview:!!document.getElementById('permOverview')?.checked,manageUsers:!!document.getElementById('permManageUsers')?.checked,dataControl:!!document.getElementById('permDataControl')?.checked,backup:!!document.getElementById('permBackup')?.checked,monitor:!!document.getElementById('permMonitor')?.checked}}
+    function roleChanged(){const role=document.getElementById('uRole').value;const dept=document.getElementById('uDept');if(!dept.value||Object.values(ROLE_DEPT).includes(dept.value))dept.value=ROLE_DEPT[role]||'';setPermissionCheckboxes(defaultPermissionsForRole(role));updatePermissionPreview()}
+    function updatePermissionPreview(){const el=document.getElementById('permissionPreview');if(!el)return;const p=readPerms();const names=[];if(p.overview)names.push('نظرة عامة');if(p.manageUsers)names.push('إدارة الأكسيس');if(p.dataControl)names.push('بيانات الواجهة');if(p.backup)names.push('نسخ واسترجاع');if(p.monitor)names.push('مراقبة النظام');el.textContent=names.length?names.join('، '):'بدون صلاحيات'}
+    function openUserModal(id=''){const user=id?allUsers.find(u=>String(u.id)===String(id)):null;document.getElementById('userModalTitle').textContent=user?'تعديل أكسيس':'إضافة أكسيس';document.getElementById('userId').value=user?.id||'';document.getElementById('uName').value=user?.name||'';document.getElementById('uEmail').value=user?.email||'';document.getElementById('uRole').value=user?.role||'admin';document.getElementById('uDept').value=user?.dept||ROLE_DEPT[user?.role||'admin'];document.getElementById('uActive').value=String(user?.active!==false);document.getElementById('uPass').value='';document.getElementById('uPass').required=!user;document.getElementById('passHint').textContent=user?`(${t('passwordOptional')})`:`(${t('passwordRequired')})`;setPermissionCheckboxes(user?.permissions||defaultPermissionsForRole(user?.role||'admin'));document.getElementById('userModal').classList.add('show')}
+    function closeUserModal(){document.getElementById('userModal').classList.remove('show')}
+    async function saveUser(e){e.preventDefault();const id=document.getElementById('userId').value;const pass=document.getElementById('uPass').value;const payload={name:document.getElementById('uName').value.trim(),email:document.getElementById('uEmail').value.trim(),role:document.getElementById('uRole').value,dept:document.getElementById('uDept').value.trim(),active:document.getElementById('uActive').value==='true',permissions:readPerms()};if(!payload.name||!payload.email||(!id&&!pass))return toast(t('fillRequired'),'error');try{setLoading(true);if(id){await api(`/admin-access/${id}`,{method:'PUT',body:JSON.stringify(pass?{...payload,newPassword:pass}:payload)})}else{await api('/admin-access',{method:'POST',body:JSON.stringify({...payload,password:pass})})}closeUserModal();await loadUsers();toast(t('saved'))}catch(err){toast(err.message,'error')}finally{setLoading(false)}}
+    async function resetPassword(id){const p=prompt(t('newPasswordPrompt'));if(!p)return;try{const r=await api('/admin-access/password',{method:'POST',body:JSON.stringify({id,newPassword:p})});toast((r&&r.message)?'تم حفظ كلمة المرور الجديدة في قاعدة البيانات':t('updated'));await loadUsers()}catch(e){toast(e.message,'error')}}
+    async function toggleUser(id){try{await api(`/admin-access/${id}/toggle`,{method:'PUT',body:JSON.stringify({})});await loadUsers();toast(t('updated'))}catch(e){toast(e.message,'error')}}
+    async function deleteUser(id){if(!confirm(t('confirmUserDelete')))return;try{await api(`/admin-access/${id}`,{method:'DELETE'});await loadUsers();toast(t('deleted'))}catch(e){toast(e.message,'error')}}
+
+
+    const FRONTEND_ROLE_DEPT = { admin:'إدارة', accountant:'حسابات', seller:'مبيعات' };
+    function frontendRoleLabel(role){return role==='admin'?'مدير':role==='accountant'?'محاسب':role==='seller'?'بائع':role}
+    function frontendRoleBadge(role){return role==='admin'?'badge-gold':role==='accountant'?'badge-info':'badge-dark'}
+    function defaultFrontendPerms(role){
+      if(role==='seller') return {modules:['sales','invoice','installments'],sellerModules:['invoice','quotation','installments','sales'],dataControl:false,manageUsers:false,backup:false};
+      if(role==='accountant') return {modules:['all-invoices','installments','reports','expenses','purchases','pur-inst','payroll'],sellerModules:[],dataControl:false,manageUsers:false,backup:false};
+      return {modules:['dashboard','sales','invoice','installments','all-invoices','products','customers','purchases','pur-inst','suppliers','expenses','inventory','reports','employees','payroll','leaves','settings'],sellerModules:['invoice','quotation','installments','sales'],dataControl:true,manageUsers:true,backup:true};
+    }
+    async function loadFrontendUsers(){if(!hasPageAccess('frontendUsers'))return;try{allFrontendUsers=await api('/users')||[];renderFrontendUsers()}catch(e){toast(e.message,'error')}}
+    function renderFrontendUsers(){
+      const q=(document.getElementById('frontendUserSearch')?.value||'').toLowerCase();
+      const role=document.getElementById('frontendRoleFilter')?.value||'';
+      const status=document.getElementById('frontendStatusFilter')?.value||'';
+      const rows=allFrontendUsers.filter(u=>{
+        const matchQ=(u.name||'').toLowerCase().includes(q)||(u.email||'').toLowerCase().includes(q)||(u.dept||'').toLowerCase().includes(q);
+        const matchRole=!role||u.role===role;
+        const matchStatus=!status||(status==='active'?u.active!==false:u.active===false);
+        return matchQ&&matchRole&&matchStatus;
+      });
+      document.getElementById('frontendUsersCount').textContent=rows.length;
+      document.getElementById('frontendUsersBody').innerHTML=rows.length?rows.map(u=>`<tr><td><div class="td-main">${escapeHtml(u.name)}</div><div class="td-sub">ID: ${escapeHtml(u.id)}</div></td><td class="ltr">${escapeHtml(u.email)}</td><td><span class="badge ${frontendRoleBadge(u.role)}">${escapeHtml(frontendRoleLabel(u.role))}</span></td><td>${escapeHtml(u.dept||'—')}</td><td><span class="badge ${u.active!==false?'badge-ok':'badge-off'}">${u.active!==false?'● نشط':'● معطل'}</span></td><td><div class="actions"><button class="btn btn-light btn-sm" onclick="openFrontendUserModal('${u.id}')">✏️</button><button class="btn btn-warning btn-sm" onclick="resetFrontendPassword('${u.id}')">🔑</button><button class="btn btn-outline btn-sm" onclick="toggleFrontendUser('${u.id}')">${u.active!==false?'⏸️':'▶️'}</button><button class="btn btn-danger btn-sm" onclick="deleteFrontendUser('${u.id}')">🗑️</button></div></td></tr>`).join(''):`<tr><td colspan="6" class="empty">لا توجد بيانات</td></tr>`;
+    }
+    function frontendRoleChanged(){const role=document.getElementById('fuRole').value;document.getElementById('fuDept').value=FRONTEND_ROLE_DEPT[role]||'عام'}
+    function openFrontendUserModal(id=''){
+      const user=id?allFrontendUsers.find(u=>String(u.id)===String(id)):null;
+      document.getElementById('frontendUserModalTitle').textContent=user?'تعديل مستخدم واجهة':'إضافة مستخدم واجهة';
+      document.getElementById('frontendUserId').value=user?.id||'';
+      document.getElementById('fuName').value=user?.name||'';
+      document.getElementById('fuEmail').value=user?.email||'';
+      document.getElementById('fuRole').value=user?.role||'seller';
+      document.getElementById('fuDept').value=user?.dept||FRONTEND_ROLE_DEPT[user?.role||'seller'];
+      document.getElementById('fuActive').value=String(user?.active!==false);
+      document.getElementById('fuPass').value='';
+      document.getElementById('fuPass').required=!user;
+      document.getElementById('fuPassHint').textContent=user?'(اختياري عند التعديل)':'(مطلوبة)';
+      document.getElementById('frontendUserModal').classList.add('show');
+    }
+    function closeFrontendUserModal(){document.getElementById('frontendUserModal').classList.remove('show')}
+    async function saveFrontendUser(e){
+      e.preventDefault();
+      const id=document.getElementById('frontendUserId').value;
+      const pass=document.getElementById('fuPass').value;
+      const role=document.getElementById('fuRole').value;
+      const payload={name:document.getElementById('fuName').value.trim(),email:document.getElementById('fuEmail').value.trim(),role,dept:document.getElementById('fuDept').value.trim(),active:document.getElementById('fuActive').value==='true',permissions:defaultFrontendPerms(role)};
+      if(!payload.name||!payload.email||(!id&&!pass))return toast(t('fillRequired'),'error');
+      try{setLoading(true);if(id){await api(`/users/${id}`,{method:'PUT',body:JSON.stringify(pass?{...payload,newPassword:pass}:payload)})}else{await api('/users',{method:'POST',body:JSON.stringify({...payload,password:pass})})}closeFrontendUserModal();await loadFrontendUsers();toast(t('saved'))}catch(err){toast(err.message,'error')}finally{setLoading(false)}
+    }
+    async function resetFrontendPassword(id){const p=prompt(t('newPasswordPrompt'));if(!p)return;try{await api('/users/password',{method:'POST',body:JSON.stringify({id,newPassword:p})});toast('تم حفظ كلمة المرور الجديدة في قاعدة البيانات');await loadFrontendUsers()}catch(e){toast(e.message,'error')}}
+    async function toggleFrontendUser(id){try{await api(`/users/${id}/toggle`,{method:'PUT',body:JSON.stringify({})});await loadFrontendUsers();toast(t('updated'))}catch(e){toast(e.message,'error')}}
+    async function deleteFrontendUser(id){if(!confirm('حذف مستخدم الواجهة؟'))return;try{await api(`/users/${id}`,{method:'DELETE'});await loadFrontendUsers();toast(t('deleted'))}catch(e){toast(e.message,'error')}}
+
+    async function loadSections(){if(!hasPageAccess('data'))return;try{allSections=await api('/admin/sections')||[];renderSectionList();renderOverviewSections();if(!currentSectionKey&&allSections.length){await loadSection(allSections[0].key)}}catch(e){toast(e.message,'error')}}
+    function sectionItemHtml(s,clickable=true){const sourceLabel=s.tableBacked?t('sourceTable'):t('sourceAppState');const sourceClass=s.tableBacked?'live':'state';return `<button class="section-item ${s.key===currentSectionKey?'active':''}" ${clickable?`onclick="loadSection('${s.key}')"`:''}><div><div class="section-item-title">${SECTION_ICONS[s.key]||'📁'} ${escapeHtml(s.label||s.key)}</div><div class="section-item-meta">${escapeHtml(s.key)} • ${escapeHtml(s.type||'')} • <span class="mini-badge ${sourceClass}">${escapeHtml(sourceLabel)}</span></div></div><span class="count-chip">${escapeHtml(s.count??'')}</span></button>`}
+    function renderSectionList(){document.getElementById('sectionList').innerHTML=allSections.length?allSections.map(s=>sectionItemHtml(s,true)).join(''):`<div class="empty">${t('noData')}</div>`}
+    async function loadSection(key){currentSectionKey=key||currentSectionKey;if(!currentSectionKey)return;try{const data=await api(`/admin/section/${encodeURIComponent(currentSectionKey)}`);currentSectionValue=data.value;window.__currentSectionMeta=data;document.getElementById('sectionTitle').textContent=data.label||currentSectionKey;document.getElementById('sectionMeta').textContent=`${data.key} — ${t('updatedAt')}: ${fmtDate(data.updatedAt)} ${data.updatedBy?' — '+t('updatedBy')+': '+data.updatedBy:''}`;document.getElementById('jsonEditor').value=JSON.stringify(currentSectionValue,null,2);document.getElementById('productAddBtn').style.display=currentSectionKey==='bq_products'?'inline-flex':'none';renderSectionBadges(data);renderSectionList();renderRecords()}catch(e){toast(e.message,'error')}}
+    function renderSectionBadges(data={}){const badges=document.getElementById('sectionBadges');const note=document.getElementById('sectionLiveNote');const sourceLabel=data.tableBacked?t('sourceTable'):t('sourceAppState');badges.innerHTML=`<span class="mini-badge ${data.tableBacked?'live':'state'}">${data.tableBacked?'🟢':'🔵'} ${escapeHtml(sourceLabel)}</span><span class="mini-badge">${t('recordsCount')}: ${escapeHtml(data.count ?? sectionCount(currentSectionValue))}</span><span class="mini-badge">${t('type')}: ${escapeHtml(data.type || (Array.isArray(currentSectionValue)?'array':typeof currentSectionValue))}</span>`;if(data.tableBacked){note.textContent=t('tableBackedNote');note.classList.remove('hidden')}else{note.classList.add('hidden')}}
+    function sectionCount(value){if(Array.isArray(value))return value.length;if(value&&typeof value==='object')return Object.keys(value).length;return value==null?0:1}
+    function getRecordRows(){if(!Array.isArray(currentSectionValue))return[];const q=(document.getElementById('recordSearch')?.value||'').toLowerCase();return currentSectionValue.map((row,index)=>({row,index})).filter(({row})=>!q||JSON.stringify(row).toLowerCase().includes(q))}
+    function preferredKeys(rows){const pref=['id','_id','code','name','email','role','dept','category','invoice_no','customer_name','supplier_name','total','paid','remaining','stock_qty','buy_price','sell_price','date'];const all=[...new Set(rows.flatMap(({row})=>row&&typeof row==='object'?Object.keys(row):['value']))];return [...pref.filter(k=>all.includes(k)),...all.filter(k=>!pref.includes(k))].slice(0,6)}
+    function renderRecords(){const head=document.getElementById('recordsHead'),body=document.getElementById('recordsBody');const stats=document.getElementById('recordStats');if(!Array.isArray(currentSectionValue)){if(stats)stats.innerHTML=`<span class="mini-badge">${t('source')}: ${window.__currentSectionMeta?.tableBacked?t('sourceTable'):t('sourceAppState')}</span><span class="mini-badge">${t('type')}: ${typeof currentSectionValue}</span>`;head.innerHTML=`<tr><th>${t('key')}</th><th>${t('value')}</th><th>${t('actions')}</th></tr>`;body.innerHTML=`<tr><td>${escapeHtml(currentSectionKey)}</td><td class="ltr">${escapeHtml(truncate(JSON.stringify(currentSectionValue),220))}</td><td><button class="btn btn-light btn-sm" onclick="openRecordModal()">✏️</button></td></tr>`;return}const rows=getRecordRows();const keys=preferredKeys(rows);if(stats)stats.innerHTML=`<span class="mini-badge">${t('rowsShown')}: ${rows.length} ${t('of')} ${currentSectionValue.length}</span><span class="mini-badge">${t('source')}: ${window.__currentSectionMeta?.tableBacked?t('sourceTable'):t('sourceAppState')}</span>`;head.innerHTML=`<tr>${keys.map(k=>`<th>${escapeHtml(k)}</th>`).join('')}<th>${t('actions')}</th></tr>`;body.innerHTML=rows.length?rows.slice(0,250).map(({row,index})=>`<tr>${keys.map(k=>`<td>${formatCell(row?.[k])}</td>`).join('')}<td><div class="actions"><button class="btn btn-light btn-sm" onclick="openRecordModal(${index})">✏️</button><button class="btn btn-danger btn-sm" onclick="deleteRecord(${index})">🗑️</button></div></td></tr>`).join(''):`<tr><td colspan="${keys.length+1||2}" class="empty">${t('noData')}</td></tr>`}
+    function formatCell(v){if(v==null)return '<span class="muted">—</span>';if(typeof v==='object')return `<span class="ltr">${escapeHtml(truncate(JSON.stringify(v),70))}</span>`;return escapeHtml(truncate(v,90))}
+    function sectionTemplate(key){const now=new Date().toISOString();const templates={bq_products:{id:'p_'+Date.now(),code:'',name:'',category:'عام',buy_price:0,sell_price:0,stock_qty:0,notes:''},bq_employees:{id:'emp_'+Date.now(),name:'',nationality:'',role:'',salary:0,housing:0,transport:0,other:0,total:0},bq_customers:{id:'cust_'+Date.now(),name:'',phone:'',email:'',address:'',notes:''},bq_suppliers:{id:'sup_'+Date.now(),name:'',phone:'',email:'',address:'',notes:''},bq_expenses:{id:'exp_'+Date.now(),title:'',amount:0,category:'عام',date:now,notes:''},bq_sales:{id:'sale_'+Date.now(),invoice_no:'INV-'+Date.now(),customer_name:'زبون عام',items:[],total:0,payment_type:'cash',paid:0,remaining:0,notes:'',date:now},bq_purchases:{id:'pur_'+Date.now(),invoice_no:'PUR-'+Date.now(),supplier_name:'مورد عام',items:[],total:0,payment_type:'cash',paid:0,remaining:0,notes:'',date:now},bq_installments:{id:'inst_'+Date.now(),customer_name:'',amount:0,paid:0,remaining:0,due_date:'',status:'pending'},bq_leaves:{id:'leave_'+Date.now(),employee_name:'',from:'',to:'',reason:'',status:'pending'},bq_pur_inst:{id:'pur_inst_'+Date.now(),supplier_name:'',amount:0,paid:0,remaining:0,due_date:'',status:'pending'}};return templates[key]||{id:'item_'+Date.now()}}
+    function openRecordModal(i=null){if(currentSectionKey==='bq_products'&&Array.isArray(currentSectionValue)){openProductModal(i);return}editingRecordIndex=i;const val=Array.isArray(currentSectionValue)?(i===null?sectionTemplate(currentSectionKey):currentSectionValue[i]):currentSectionValue;document.getElementById('recordJson').value=JSON.stringify(val,null,2);document.getElementById('recordTitle').textContent=i===null?t('addRecord'):t('editRecord');document.getElementById('recordModal').classList.add('show')}
+    function closeRecordModal(){document.getElementById('recordModal').classList.remove('show')}
+    async function saveRecord(){let obj;try{obj=JSON.parse(document.getElementById('recordJson').value)}catch(e){return toast(t('invalidJson')+': '+e.message,'error')}if(Array.isArray(currentSectionValue)){if(editingRecordIndex===null)currentSectionValue.push(obj);else currentSectionValue[editingRecordIndex]=obj}else currentSectionValue=obj;await saveSectionValue(currentSectionValue);closeRecordModal()}
+    async function deleteRecord(i){if(!confirm(t('confirmDelete')))return;currentSectionValue.splice(i,1);await saveSectionValue(currentSectionValue)}
+    async function saveJsonEditor(){let val;try{val=JSON.parse(document.getElementById('jsonEditor').value)}catch(e){return toast(t('invalidJson')+': '+e.message,'error')}await saveSectionValue(val)}
+    async function saveSectionValue(value){try{setLoading(true);await api(`/admin/section/${encodeURIComponent(currentSectionKey)}`,{method:'PUT',body:JSON.stringify({value})});await loadSection(currentSectionKey);await loadOverview();toast(t('saved'))}catch(e){toast(e.message,'error')}finally{setLoading(false)}}
+    async function resetSection(){if(!confirm(t('confirmReset')))return;try{setLoading(true);await api(`/admin/section/${encodeURIComponent(currentSectionKey)}`,{method:'DELETE'});await loadSection(currentSectionKey);await loadOverview();toast(t('updated'))}catch(e){toast(e.message,'error')}finally{setLoading(false)}}
+    function formatJsonEditor(){try{const val=JSON.parse(document.getElementById('jsonEditor').value);document.getElementById('jsonEditor').value=JSON.stringify(val,null,2);toast(t('updated'))}catch(e){toast(t('invalidJson')+': '+e.message,'error')}}
+    async function copyJson(){const text=document.getElementById('jsonEditor').value;try{await navigator.clipboard.writeText(text)}catch{const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove()}toast(t('copied'));trackActivity('نسخ JSON من الأدمن',{section:currentSectionKey})}
+    function downloadSection(){if(!currentSectionKey)return;downloadJson(`${currentSectionKey}_${new Date().toISOString().slice(0,10)}.json`,currentSectionValue);toast(t('sectionExported'));trackActivity('تصدير قسم CSV',{section:currentSectionKey});trackActivity('تصدير قسم JSON',{section:currentSectionKey})}
+    function downloadCsv(){if(!currentSectionKey)return;if(!Array.isArray(currentSectionValue))return toast(t('invalidJson'),'warning');const rows=getRecordRows().map(x=>x.row);const keys=[...new Set(rows.flatMap(r=>r&&typeof r==='object'?Object.keys(r):['value']))];const esc=v=>`"${String(v==null?'':(typeof v==='object'?JSON.stringify(v):v)).replace(/"/g,'""')}"`;const csv='\ufeff'+[keys.join(','),...rows.map(r=>keys.map(k=>esc(r?.[k])).join(','))].join('\n');const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`${currentSectionKey}_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url);toast(t('sectionExported'))}
+    async function importSectionJson(event){const f=event.target.files?.[0];event.target.value='';if(!f)return;try{const json=JSON.parse(await f.text());if(!confirm(t('confirmRestore')))return;await saveSectionValue(json)}catch(e){toast(t('invalidJson')+': '+e.message,'error')}}
+    async function syncDatabase(){if(!confirm(t('confirmSync')))return;try{setLoading(true);await api('/admin/sync-database',{method:'POST'});await loadSections();if(currentSectionKey)await loadSection(currentSectionKey);await loadOverview();toast(t('syncDone'))}catch(e){toast(e.message,'error')}finally{setLoading(false)}}
+
+    function openProductModal(i=null){if(currentSectionKey!=='bq_products')return toast(t('chooseSection'),'warning');editingProductIndex=i;const isEdit=i!==null&&i!==undefined;const product=isEdit&&Array.isArray(currentSectionValue)?(currentSectionValue[i]||{}):{};document.getElementById('prodName').value=product.name||'';document.getElementById('prodCode').value=product.code||'';document.getElementById('prodCategory').value=product.category||'';document.getElementById('prodBuyPrice').value=Number(product.buy_price||0);document.getElementById('prodSellPrice').value=Number(product.sell_price||0);document.getElementById('prodStockQty').value=Number(product.stock_qty||0);document.getElementById('prodNotes').value=product.notes||'';document.getElementById('productSuccess').classList.add('hidden');document.getElementById('productModalTitle').textContent=isEdit?t('editProduct'):t('addProduct');document.getElementById('productSubmitText').textContent=isEdit?t('saveProductChanges'):t('addProduct');document.getElementById('productModal').classList.add('show')}
+    function closeProductModal(){document.getElementById('productModal').classList.remove('show');editingProductIndex=null;document.getElementById('productModalTitle').textContent=t('addProduct');document.getElementById('productSubmitText').textContent=t('addProduct')}
+    async function saveProduct(e){e.preventDefault();const isEdit=editingProductIndex!==null&&editingProductIndex!==undefined;currentSectionValue=Array.isArray(currentSectionValue)?currentSectionValue:[];const oldProduct=isEdit?(currentSectionValue[editingProductIndex]||{}):{};const product={...oldProduct,id:oldProduct.id||oldProduct._id||('p_'+Date.now()),name:document.getElementById('prodName').value.trim(),code:document.getElementById('prodCode').value.trim(),category:document.getElementById('prodCategory').value.trim()||'عام',buy_price:parseFloat(document.getElementById('prodBuyPrice').value)||0,sell_price:parseFloat(document.getElementById('prodSellPrice').value)||0,stock_qty:parseInt(document.getElementById('prodStockQty').value,10)||0,notes:document.getElementById('prodNotes').value};if(!product.name||!product.code)return toast(t('fillRequired'),'error');if(isEdit)currentSectionValue[editingProductIndex]=product;else currentSectionValue.push(product);await saveSectionValue(currentSectionValue);document.getElementById('productSuccess').textContent=isEdit?t('productSaved'):t('productAdded');document.getElementById('productSuccess').classList.remove('hidden');setTimeout(()=>closeProductModal(),800)}
+
+    async function downloadBackup(){try{const res=await fetch(API_BASE+'/backup',{headers:{Authorization:`Bearer ${token}`}});if(!res.ok)throw new Error('Backup failed');const json=await res.json();downloadJson(`bq_backup_${new Date().toISOString().slice(0,10)}.json`,json);toast(t('backupDownloaded'));trackActivity('تحميل نسخة احتياطية',{page:currentPage})}catch(e){toast(e.message,'error')}}
+    function downloadJson(filename,obj){const blob=new Blob([JSON.stringify(obj,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;a.click();URL.revokeObjectURL(url)}
+    async function restoreBackup(){const f=document.getElementById('restoreFile').files[0];if(!f)return toast(t('chooseFile'),'warning');if(!confirm(t('confirmRestore')))return;try{setLoading(true);const json=JSON.parse(await f.text());await api('/admin/backup/restore',{method:'POST',body:JSON.stringify(json)});toast(t('restoreDone'));await Promise.all([loadOverview(),loadSections()])}catch(e){toast(e.message,'error')}finally{setLoading(false)}}
+
+    function buildMonitorQuery(){const params=new URLSearchParams();params.set('limit','120');const user=document.getElementById('monitorUserFilter')?.value||'';const source=document.getElementById('monitorSourceFilter')?.value||'';const level=document.getElementById('monitorStatusFilter')?.value||'';const q=(document.getElementById('monitorSearch')?.value||'').trim();if(user)params.set('user',user);if(source)params.set('source',source);if(level)params.set('level',level);if(q)params.set('q',q);return '?'+params.toString()}
+    let monitorSearchTimer=null;
+    function debouncedLoadMonitor(){clearTimeout(monitorSearchTimer);monitorSearchTimer=setTimeout(()=>loadMonitor(),350)}
+    function populateMonitorUsers(users=[]){const sel=document.getElementById('monitorUserFilter');if(!sel)return;const current=sel.value;sel.innerHTML=`<option value="">${t('allUsers')}</option>`+(users||[]).map(u=>`<option value="${escapeHtml(u.email)}">${escapeHtml(u.email)}${u.count?` (${u.count})`:''}</option>`).join('');sel.value=current}
+    function resetMonitorFilters(){['monitorUserFilter','monitorSourceFilter','monitorStatusFilter','monitorSearch'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});loadMonitor()}
+    async function loadMonitor(){try{const query=buildMonitorQuery();const [stats,users,logs]=await Promise.all([api('/monitor/stats'),api('/monitor/log-users').catch(()=>[]),api('/monitor/logs'+query)]);window.__monitorUsers=users||[];populateMonitorUsers(window.__monitorUsers);window.__monitorStats=stats||{};window.__monitorLogs=logs||[];renderMonitor(stats||{},logs||[])}catch(e){toast(e.message,'error')}}
+    function renderMonitor(stats={},logs=[]){document.getElementById('monitorCards').innerHTML=`${metricCard('⏱️',t('uptime'),Math.round((stats.uptime||0)/60)+'m',t('systemReady'))}${metricCard('📨',t('requests'),stats.requestCount||0,t('systemReady'))}${metricCard('🧠',t('memory'),formatBytes(stats.memoryUsed),`${formatBytes(stats.memoryTotal)} total`)}${metricCard('🗄️',t('database'),formatBytes(stats.dbSizeBytes),stats.database||'PostgreSQL')}`;const st=document.getElementById('monitorFilterStats');if(st)st.textContent=`${t('filteredLogs')}: ${logs.length}`;renderLogs('logsBody2',logs)}
+
+    document.addEventListener('keydown',e=>{if(e.key==='Escape'){document.querySelectorAll('.modal.show').forEach(m=>m.classList.remove('show'));closeSidebar()}if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='s'&&currentPage==='data'){e.preventDefault();saveJsonEditor()}});
+    document.addEventListener('click',e=>{if(e.target.classList.contains('modal'))e.target.classList.remove('show')});
+
+    applyI18n();
+    document.querySelectorAll('#userModal input[type=checkbox]').forEach(cb=>cb.addEventListener('change',updatePermissionPreview));
+    if(token&&adminUser){startApp()}else{document.getElementById('login').style.display='flex'}
+  </script>
+</body>
+</html>
