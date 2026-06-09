@@ -2865,17 +2865,24 @@ function makeSellerInvoiceNo() {
 
 function normalizeInstallmentForBackend(row) {
   return {
+    ...row,
     legacy_id: row.id || row.legacy_id || null,
-    customer_name: row.customer_name || 'عميل نقدي',
+    sale_id: row.sale_id || '',
+    invoice_no: row.invoice_no || '',
+    customer_id: row.customer_id || '',
+    seller_name: row.seller_name || currentUser?.name || '',
+    seller_email: row.seller_email || currentUser?.email || '',
     amount: Number(row.amount_due || row.amount || row.invoice_remaining || 0),
     paid: Number(row.amount_paid || row.paid || 0),
-    remaining: Number((row.amount_due ?? row.remaining ?? row.invoice_remaining) || 0) - Number(row.amount_paid || row.paid || 0),
-    due_date: row.due_date || null,
-    status: row.paid ? 'paid' : 'pending',
+    remaining: Math.max(
+      0,
+      Number(row.amount_due || row.amount || row.invoice_remaining || 0) -
+      Number(row.amount_paid || row.paid || 0)
+    ),
+    status: (Number(row.amount_paid || row.paid || 0) >= Number(row.amount_due || row.amount || 0)) ? 'paid' : 'pending',
     notes: row.notes || ('فاتورة: ' + (row.invoice_no || ''))
   };
 }
-
 async function saveSellerInstallmentsToBackend(rows) {
   const saved = [];
   for (const row of rows || []) {
