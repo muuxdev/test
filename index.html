@@ -2570,6 +2570,13 @@ async function backendLogin(user, password) {
 async function loadBackendState(options = {}) {
   const { refresh = false, silent = false } = options;
   if (!backendToken) return false;
+
+  // البائع لا يستخدم /state/all لأنه تحميل عام مخصص للأدمن/المحاسب.
+  // البائع يعتمد على endpoints مباشرة: /sales/mine و /installments/mine و /products.
+  if (currentUser && currentUser.role === 'seller') {
+    return false;
+  }
+
   if (dbSyncBusy || dbSaveInProgress > 0) return false;
 
   dbSyncBusy = true;
@@ -2591,6 +2598,7 @@ async function loadBackendState(options = {}) {
 function startDatabaseLiveSync() {
   stopDatabaseLiveSync();
   if (!backendToken) return;
+  if (currentUser && currentUser.role === 'seller') return;
 
   // أول تحميل بعد الدخول، وبعدها تحديث دوري آمن مناسب لفتح الواجهة 24 ساعة على نفس الجهاز.
   // يتم التحديث فورًا عند الرجوع للتاب/النافذة، والدوري كل 60 ثانية لتقليل الضغط على السيرفر.
@@ -2607,10 +2615,10 @@ function stopDatabaseLiveSync() {
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && backendToken) loadBackendState({ refresh: true, silent: true });
+  if (!document.hidden && backendToken && !(currentUser && currentUser.role === 'seller')) loadBackendState({ refresh: true, silent: true });
 });
 window.addEventListener('focus', () => {
-  if (backendToken) loadBackendState({ refresh: true, silent: true });
+  if (backendToken && !(currentUser && currentUser.role === 'seller')) loadBackendState({ refresh: true, silent: true });
 });
 
 // ── In-memory data (Demo mode) ──
@@ -2834,6 +2842,91 @@ async function getSellerSalesLive() {
   return localMatches;
 }
 
+async function loadSellerProductsLive() {
+  if (!backendToken) return productsData;
+  try {
+    const res = await backendRequest('/products');
+    const rows = Array.isArray(res) ? res : (res.products || []);
+    if (Array.isArray(rows) && rows.length) {
+      productsData = rows;
+      setLocalState('bq_products', productsData);
+      if (typeof svLoadProductsDropdown === 'function') svLoadProductsDropdown();
+      return rows;
+    }
+  } catch (e) {
+    console.warn('⚠️ Failed to load products from backend; using local products:', e);
+  }
+  return productsData;
+}
+
+function makeSellerInvoiceNo() {
+  return 'INV-' + Date.now().toString().slice(-8);
+}
+
+function normalizeInstallmentForBackend(row) {
+  return {
+    legacy_id: row.id || row.legacy_id || null,
+    customer_name: row.customer_name || 'عميل نقدي',
+    amount: Number(row.amount_due || row.amount || row.invoice_remaining || 0),
+    paid: Number(row.amount_paid || row.paid || 0),
+    remaining: Number((row.amount_due ?? row.remaining ?? row.invoice_remaining) || 0) - Number(row.amount_paid || row.paid || 0),
+    due_date: row.due_date || null,
+    status: row.paid ? 'paid' : 'pending',
+    notes: row.notes || ('فاتورة: ' + (row.invoice_no || ''))
+  };
+}
+
+async function saveSellerInstallmentsToBackend(rows) {
+  const saved = [];
+  for (const row of rows || []) {
+    try {
+      const created = await backendRequest('/installments', {
+        method: 'POST',
+        body: JSON.stringify(normalizeInstallmentForBackend(row))
+      });
+      saved.push({ ...row, ...created });
+    } catch (e) {
+      console.warn('⚠️ Failed to save installment to backend:', e);
+      throw e;
+    }
+  }
+  return saved;
+}
+
+async function saveSellerSaleToBackend(sale, installmentRows = []) {
+  if (!backendToken) {
+    throw new Error('لا يوجد اتصال آمن بالسيرفر. سجل الدخول مرة أخرى.');
+  }
+
+  const savedSale = await backendRequest('/sales', {
+    method: 'POST',
+    body: JSON.stringify(sale)
+  });
+
+  const finalSale = {
+    ...sale,
+    ...savedSale,
+    items: sale.items,
+    seller_name: sale.seller_name || currentUser?.name,
+    seller_email: sale.seller_email || currentUser?.email,
+    createdBy: sale.createdBy || currentUser?.email
+  };
+
+  salesData = mergeRecordsById(salesData, [finalSale]);
+  setLocalState('bq_sales', salesData);
+
+  if (installmentRows.length) {
+    const savedInstallments = await saveSellerInstallmentsToBackend(installmentRows);
+    installmentsData = mergeRecordsById(installmentsData, savedInstallments.length ? savedInstallments : installmentRows);
+    setLocalState('bq_installments', installmentsData);
+  }
+
+  await loadSellerProductsLive();
+  await getSellerSalesLive();
+
+  return finalSale;
+}
+
 function getSaleByAnyId(id) {
   const sid = String(id);
   return (window.__lastSellerSales || []).find(x => String(x.id) === sid || String(x._id) === sid || String(x.db_id) === sid || String(x.invoice_no) === sid)
@@ -2993,10 +3086,16 @@ window.doLogin = async function(){
 
   try {
     const loginData = await backendLogin(selectedLoginUser, pw);
-    await loadBackendState({ refresh: false, silent: false });
-    if(typeof applyThemeMode === 'function') applyThemeMode(settingsData.themeMode || 'light');
-    startDatabaseLiveSync();
     currentUser = { ...selectedLoginUser, ...(loginData.user || {}) };
+
+    if (currentUser.role === 'seller') {
+      await loadSellerProductsLive();
+    } else {
+      await loadBackendState({ refresh: false, silent: false });
+      startDatabaseLiveSync();
+    }
+
+    if(typeof applyThemeMode === 'function') applyThemeMode(settingsData.themeMode || 'light');
   } catch (e) {
     console.warn('Backend login/load failed:', e);
     const msg = /Invalid credentials|401/i.test(e.message)
@@ -3119,7 +3218,7 @@ function applySellerPermissions() {
 window.showPage = async function(name,el){
   if(!canOpenModule(name)) { showMessage('⛔ ليس لديك صلاحية فتح هذا القسم','error'); return; }
   // كل صفحة/خدمة تسحب آخر نسخة من السيرفر بالتوكن قبل العرض.
-  if (backendToken) await loadBackendState({ refresh: false, silent: true });
+  if (backendToken && !(currentUser && currentUser.role === 'seller')) await loadBackendState({ refresh: false, silent: true });
   document.querySelectorAll('.page-section').forEach(s=>s.classList.remove('active'));
   document.getElementById(name+'-page').classList.add('active');
   document.querySelectorAll('.menu-item').forEach(m=>m.classList.remove('active'));
@@ -3421,7 +3520,7 @@ window.saveSale=async function(){
   const rem=total-paid;
   const custId=document.getElementById('invCustomer').value;
   const custName=custId==='cash'||!custId?'عميل نقدي':customersData.find(c=>c.id===custId)?.name||'عميل';
-  const invNo='INV-'+String(invCounter).padStart(4,'0');
+  const invNo=makeSellerInvoiceNo();
   const sale={id:Date.now()+'',invoice_no:invNo,date:document.getElementById('invDate').value,customer_id:custId,customer_name:custName,user_name:currentUser.name,seller_name:currentUser.name,seller_email:currentUser.email,createdBy:currentUser.email,items:[...invItems],subtotal:sub,tax_amount:tax,discount:disc,total,paid,remaining:rem,payment_type:document.getElementById('invPayType').value,notes:document.getElementById('invNotes').value,inv_type:tax>0?'tax':'normal'};
   invCounter++; await saveStateValue('bq_inv_counter', invCounter);
   salesData.push(sale); await save('bq_sales',salesData);
@@ -4385,7 +4484,7 @@ window.svSaveSummaryInvoice = async function(){
   const paid  = parseFloat(document.getElementById('svSumPaid').value)||0;
   const rem   = total - paid;
   const custName = document.getElementById('svInvCustomer').value.trim()||'عميل نقدي';
-  const invNo = 'INV-'+String(invCounter).padStart(4,'0');
+  const invNo = makeSellerInvoiceNo();
   const items = svSumItems.length ? svSumItems.map(i=>({pid:'sum',name:i.name,qty:i.qty,price:0,total:0,code:'—'}))
                                   : [{pid:'sum',name:'بنود متنوعة',qty:1,price:total,total,code:'—'}];
   const sale = {
@@ -4398,13 +4497,20 @@ window.svSaveSummaryInvoice = async function(){
     notes:document.getElementById('svInvNotes').value,
     inv_type:'summary'
   };
-  invCounter++; await saveStateValue('bq_inv_counter', invCounter);
-  salesData.push(sale); await save('bq_sales',salesData);
+  const pendingInstallments = [];
   // ترحيل للأقساط لو في متبقي
   if(rem>0){
     const dueDate=new Date(sale.date); dueDate.setMonth(dueDate.getMonth()+1);
-    installmentsData.push({id:Date.now()+'',sale_id:sale.id,invoice_no:invNo,customer_id:'cash',customer_name:custName,seller_name:currentUser.name,seller_email:currentUser.email,createdBy:currentUser.email,invoice_total:total,invoice_paid:paid,invoice_remaining:rem,amount_due:rem,amount_paid:0,due_date:dueDate.toISOString().split('T')[0],paid:false});
-    await save('bq_installments',installmentsData);
+    pendingInstallments.push({id:Date.now()+'',sale_id:sale.id,invoice_no:invNo,customer_id:'cash',customer_name:custName,seller_name:currentUser.name,seller_email:currentUser.email,createdBy:currentUser.email,invoice_total:total,invoice_paid:paid,invoice_remaining:rem,amount_due:rem,amount_paid:0,due_date:dueDate.toISOString().split('T')[0],paid:false});
+  }
+
+  try {
+    const saved = await saveSellerSaleToBackend(sale, pendingInstallments);
+    Object.assign(sale, saved);
+  } catch (e) {
+    console.error('❌ فشل حفظ الفاتورة المجملة في PostgreSQL:', e);
+    showMessage('❌ فشل حفظ الفاتورة في قاعدة البيانات: ' + e.message, 'error');
+    return false;
   }
   // عرض preview
   document.getElementById('svPreviewTitle').textContent='فاتورة مجملة';
@@ -5714,8 +5820,8 @@ let svItems = [];
 
 window.showSellerTab = async function(tab, el) {
   if(tab !== 'home' && !getAllowedSellerTabs().includes(tab)) { showMessage('⛔ ليس لديك صلاحية فتح هذا القسم','error'); return; }
-  // واجهة البائع تسحب آخر بيانات من السيرفر بالتوكن قبل عرض الخدمة.
-  if (backendToken) await loadBackendState({ refresh: false, silent: true });
+  // واجهة البائع لا تستخدم /state/all. تسحب المنتجات والفواتير من endpoints مباشرة.
+  if (backendToken) await loadSellerProductsLive();
   if (typeof svLoadProductsDropdown === 'function') svLoadProductsDropdown();
   document.querySelectorAll('.seller-page').forEach(p=>p.classList.remove('active'));
   document.getElementById('sv-'+tab).classList.add('active');
@@ -5803,16 +5909,8 @@ window.svSaveSale=async function(){
   const custId='cash';
   const invNo='INV-'+String(invCounter).padStart(4,'0');
   const sale={id:Date.now()+'',invoice_no:invNo,date:document.getElementById('svInvDate').value,customer_id:custId,customer_name:custName,user_name:currentUser.name,seller_name:currentUser.name,seller_email:currentUser.email,createdBy:currentUser.email,items:[...svItems],subtotal:sub,tax_amount:tax,discount:disc,total,paid,remaining:rem,payment_type:document.getElementById('svInvPayType').value,notes:document.getElementById('svInvNotes').value,inv_type:invType};
-  invCounter++; await saveStateValue('bq_inv_counter', invCounter);
-  salesData.push(sale); await save('bq_sales',salesData);
-  // تحديث رصيد العميل
-  if(custId!=='cash'&&custId){
-    const ci=customersData.findIndex(c=>c.id===custId);
-    if(ci>=0){ customersData[ci].balance_due+=rem; customersData[ci].total_purchases+=total; await save('bq_customers',customersData); }
-  }
-  // تحديث المخزون
-  svItems.forEach(item=>{ const pi=productsData.findIndex(p=>p.id===item.pid); if(pi>=0){ productsData[pi].stock_qty=Math.max(0,(productsData[pi].stock_qty||0)-item.qty); } });
-  await save('bq_products',productsData);
+  // لا نعرض نجاح الاعتماد إلا بعد نجاح PostgreSQL.
+  const pendingInstallments = [];
   // ترحيل تلقائي للأقساط/الآجل لما يكون متبقي
   if(rem>0){
     if(sale.payment_type==='installment'){
@@ -5821,18 +5919,20 @@ window.svSaveSale=async function(){
       const instAmt=rem/count;
       for(let i=1;i<=count;i++){
         const dd=new Date(sale.date); dd.setMonth(dd.getMonth()+i);
-        installmentsData.push({id:Date.now()+'-'+i,sale_id:sale.id,invoice_no:invNo,customer_id:custId,customer_name:custName,seller_name:currentUser.name,seller_email:currentUser.email,createdBy:currentUser.email,invoice_total:total,invoice_paid:paid,invoice_remaining:rem,amount_due:instAmt,amount_paid:0,due_date:dd.toISOString().split('T')[0],paid:false});
+        pendingInstallments.push({id:Date.now()+'-'+i,sale_id:sale.id,invoice_no:invNo,customer_id:custId,customer_name:custName,seller_name:currentUser.name,seller_email:currentUser.email,createdBy:currentUser.email,invoice_total:total,invoice_paid:paid,invoice_remaining:rem,amount_due:instAmt,amount_paid:0,due_date:dd.toISOString().split('T')[0],paid:false});
       }
     } else if(sale.payment_type==='deferred'||sale.payment_type==='cash'||sale.payment_type==='card'||sale.payment_type==='transfer'){
       // أي فاتورة فيها متبقي → ترحيل تلقائي كدين واحد
       const dueDate = new Date(sale.date); dueDate.setMonth(dueDate.getMonth()+1);
-      installmentsData.push({
+      pendingInstallments.push({
         id:Date.now()+'',
         sale_id:sale.id,
         invoice_no:invNo,
         customer_id:custId,
         customer_name:custName,
         seller_name:currentUser.name,
+        seller_email:currentUser.email,
+        createdBy:currentUser.email,
         invoice_total:total,
         invoice_paid:paid,
         invoice_remaining:rem,
@@ -5842,7 +5942,15 @@ window.svSaveSale=async function(){
         paid:false
       });
     }
-    await save('bq_installments',installmentsData);
+  }
+
+  try {
+    const saved = await saveSellerSaleToBackend(sale, pendingInstallments);
+    Object.assign(sale, saved);
+  } catch (e) {
+    console.error('❌ فشل حفظ فاتورة البائع في PostgreSQL:', e);
+    showMessage('❌ فشل حفظ الفاتورة في قاعدة البيانات: ' + e.message, 'error');
+    return false;
   }
   // عرض الفاتورة
   document.getElementById('svPreviewTitle').textContent = invType==='tax'?'فاتورة ضريبية':invType==='summary'?'فاتورة مجملة':'فاتورة بيع';
