@@ -4093,6 +4093,47 @@ async function syncSaleFromInstallments(saleId, invoiceNo, payDate=today()){
   save('bq_sales',salesData);
   return salesData[si];
 }
+// ✅ يحفظ الدفع في جداول قاعدة البيانات الفعلية (installments + sales)
+// وليس في مخزن الحالة فقط، حتى يظهر السداد للبائع في /installments/mine و /sales/mine
+// ويختفي زر الدفع ولا يُسدّد القسط أكثر من مرة.
+async function persistInstallmentPaymentToBackend(inst, updatedSale){
+  if(!backendToken) return;
+  const due = Number(inst.amount_due)||Number(inst.amount)||0;
+  const paidNum = Math.min(Number(inst.amount_paid)||0, due);
+  const instDbId = inst.db_id || inst._id;
+  if(instDbId){
+    try{
+      await backendRequest('/installments/'+encodeURIComponent(instDbId), {
+        method:'PUT',
+        body: JSON.stringify({
+          customer_name: inst.customer_name || '',
+          amount: due,
+          paid: paidNum,
+          remaining: Math.max(0, due - paidNum),
+          due_date: inst.due_date || null,
+          status: paidNum >= due ? 'paid' : 'pending',
+          notes: inst.notes || ''
+        })
+      });
+    }catch(e){ console.warn('⚠️ فشل تحديث القسط في قاعدة البيانات:', e); }
+  }
+  if(updatedSale){
+    const saleDbId = updatedSale.db_id || updatedSale._id;
+    if(saleDbId){
+      try{
+        await backendRequest('/sales/'+encodeURIComponent(saleDbId), {
+          method:'PUT',
+          body: JSON.stringify({
+            customer_name: updatedSale.customer_name || '',
+            payment_type: updatedSale.payment_type || 'installment',
+            paid: Number(updatedSale.paid)||0,
+            notes: updatedSale.notes || ''
+          })
+        });
+      }catch(e){ console.warn('⚠️ فشل تحديث الفاتورة في قاعدة البيانات:', e); }
+    }
+  }
+}
 function loadInstallmentsTable(){
   const tb=document.getElementById('instTableBody');
   const myInvIds=currentUser.role==='seller'?new Set(getVisibleSalesForCurrentUser().map(s=>String(s.id))):null;
@@ -4140,13 +4181,17 @@ window.payInstallment=async function(id){
   const payDate = prompt('تاريخ الدفع:', today()) || today();
   inst.amount_paid = Math.min(currentPaid+paid, due);
   inst.paid = inst.amount_paid >= due;
+  inst.remaining = Math.max(0, due - inst.amount_paid);
+  inst.status = inst.paid ? 'paid' : 'pending';
   inst.paid_date = inst.paid ? payDate : (inst.paid_date||null);
   inst.last_payment = payDate;
   installmentsData[i]=inst;
   await save('bq_installments',installmentsData);
   const ci=customersData.findIndex(c=>String(c.id)===String(inst.customer_id));
   if(ci>=0){ customersData[ci].balance_due=Math.max(0,(Number(customersData[ci].balance_due)||0)-paid); await save('bq_customers',customersData); }
-  const sale = syncSaleFromInstallments(inst.sale_id, inst.invoice_no, payDate);
+  const sale = await syncSaleFromInstallments(inst.sale_id, inst.invoice_no, payDate);
+  // ✅ تثبيت الدفع في جداول قاعدة البيانات الفعلية ليتزامن مع رؤية البائع
+  await persistInstallmentPaymentToBackend(inst, sale);
   const snap = getInstallmentInvoiceSnapshot(inst);
   showMessage(snap.remaining<=0 ? '✅ تم سداد الفاتورة بالكامل وإغلاقها 🎉' : '✅ تم تسجيل دفع '+fmt(paid)+' — متبقي على الفاتورة: '+fmt(snap.remaining));
   loadInstallmentsTable();
@@ -6090,15 +6135,20 @@ window.svPayInst=async function(id){
   const amt=Math.min(parseFloat(amtStr)||0, rem);
   if(amt<=0){ showMessage('⚠️ أدخل مبلغاً صحيحاً','warning'); return; }
   const payDate=prompt('تاريخ الدفع:', today()) || today();
-  installmentsData[i].amount_paid=Math.min(currentPaid+amt,due);
-  installmentsData[i].paid=installmentsData[i].amount_paid>=due;
+  const newPaid=Math.min(currentPaid+amt,due);
+  installmentsData[i].amount_paid=newPaid;
+  installmentsData[i].paid=newPaid>=due;
+  installmentsData[i].remaining=Math.max(0,due-newPaid);
+  installmentsData[i].status=installmentsData[i].paid?'paid':'pending';
   installmentsData[i].paid_date=installmentsData[i].paid?payDate:(installmentsData[i].paid_date||null);
   installmentsData[i].last_payment=payDate;
   await save('bq_installments',installmentsData);
   const ci=customersData.findIndex(c=>String(c.id)===String(installmentsData[i].customer_id));
   if(ci>=0){ customersData[ci].balance_due=Math.max(0,(Number(customersData[ci].balance_due)||0)-amt); await save('bq_customers',customersData); }
-  syncSaleFromInstallments(installmentsData[i].sale_id, installmentsData[i].invoice_no, payDate);
-  svLoadInstallments(); showMessage('✅ تم تسجيل الدفع');
+  const updatedSale=await syncSaleFromInstallments(installmentsData[i].sale_id, installmentsData[i].invoice_no, payDate);
+  // ✅ تثبيت الدفع في جداول قاعدة البيانات الفعلية حتى يختفي زر الدفع وتظهر الفاتورة مسددة في صفحة فواتيري
+  await persistInstallmentPaymentToBackend(installmentsData[i], updatedSale);
+  await svLoadInstallments(); showMessage('✅ تم تسجيل الدفع');
 };
 </script>
 
